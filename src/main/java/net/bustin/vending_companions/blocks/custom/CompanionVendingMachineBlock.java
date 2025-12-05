@@ -1,14 +1,17 @@
 package net.bustin.vending_companions.blocks.custom;
 
+import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.blocks.entity.ModBlockEntites;
 import net.bustin.vending_companions.blocks.entity.custom.CompanionVendingMachineBlockEntity;
 import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.TextComponent;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.entity.player.Player;
+import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BaseEntityBlock;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
@@ -33,6 +36,24 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
             BlockEntity entity = pLevel.getBlockEntity(pPos);
             if(entity instanceof CompanionVendingMachineBlockEntity) {
                 NetworkHooks.openGui(((ServerPlayer)pPlayer), (CompanionVendingMachineBlockEntity)entity, pPos);
+                CompanionVendingMachineBlockEntity locker = (CompanionVendingMachineBlockEntity) entity;
+                ItemStack held = pPlayer.getItemInHand(pHand);
+
+                if (!held.isEmpty() && held.getItem() instanceof CompanionItem) {
+                    if (!locker.hasCompanion()) {
+                        ItemStack toStore = held.copy();
+                        toStore.setCount(1);
+                        locker.insertCompanion(toStore);
+                        held.shrink(1); // remove one from player hand
+
+                        return InteractionResult.CONSUME; // don't open GUI in this case
+                    } else {
+                        // optional: feedback when already occupied
+                        pPlayer.displayClientMessage(
+                                new TextComponent("This locker already has a companion stored!"), true);
+                        return InteractionResult.CONSUME;
+                    }
+                }
             } else {
                 throw new IllegalStateException("Our Container provider is missing!");
             }
