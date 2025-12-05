@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "vending_companions:block/companion_vending_machine"
+    }
+  }
+}
