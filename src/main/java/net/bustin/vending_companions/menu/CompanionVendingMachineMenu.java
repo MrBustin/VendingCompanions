@@ -3,6 +3,7 @@ package net.bustin.vending_companions.menu;
 
 import net.bustin.vending_companions.blocks.ModBlocks;
 import net.bustin.vending_companions.blocks.entity.custom.CompanionVendingMachineBlockEntity;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -14,6 +15,8 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.SlotItemHandler;
+
+import java.util.List;
 
 public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     private final CompanionVendingMachineBlockEntity blockEntity;
@@ -33,13 +36,22 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     }
 
     // Expose BE to the screen
+
+    public List<ItemStack> getCompanions() {
+        return blockEntity.getCompanions();
+    }
+
+    public ItemStack getCompanion(int index) {
+        return blockEntity.getCompanion(index);
+    }
+
     public CompanionVendingMachineBlockEntity getBlockEntity() {
         return blockEntity;
     }
 
-    public ItemStack getDisplayedCompanion() {
-        return blockEntity.getStoredCompanion();
-    }
+//    public ItemStack getDisplayedCompanion() {
+//        return blockEntity.getStoredCompanion();
+//    }
 
     // No TE inventory to quick-move into, so just bail
     @Override
@@ -77,5 +89,6 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             this.addSlot(new Slot(playerInventory, i, x, y));
         }
     }
+
 }
 

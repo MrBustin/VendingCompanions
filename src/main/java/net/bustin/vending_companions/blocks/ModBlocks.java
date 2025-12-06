@@ -2,6 +2,7 @@ package net.bustin.vending_companions.blocks;
 
 import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.blocks.custom.CompanionVendingMachineBlock;
+import net.bustin.vending_companions.blocks.custom.ExampleBlock;
 import net.bustin.vending_companions.items.ModItems;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.CreativeModeTab;
@@ -24,7 +25,7 @@ public class ModBlocks {
 
 
     public static final RegistryObject<Block> EXAMPLE_BLOCK = registerBlock("example_block",
-            ()-> new Block(BlockBehaviour.Properties.of(Material.METAL)
+            ()-> new ExampleBlock(BlockBehaviour.Properties.of(Material.METAL)
                     .strength(9f).requiresCorrectToolForDrops()), CreativeModeTab.TAB_MISC);
 
     public static final RegistryObject<Block> COMPANION_VENDING_MACHINE = registerBlock("companion_vending_machine",

@@ -34,26 +34,23 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
                                  Player pPlayer, InteractionHand pHand, BlockHitResult pHit) {
         if (!pLevel.isClientSide()) {
             BlockEntity entity = pLevel.getBlockEntity(pPos);
-            if(entity instanceof CompanionVendingMachineBlockEntity) {
-                NetworkHooks.openGui(((ServerPlayer)pPlayer), (CompanionVendingMachineBlockEntity)entity, pPos);
+            if (entity instanceof CompanionVendingMachineBlockEntity) {
                 CompanionVendingMachineBlockEntity locker = (CompanionVendingMachineBlockEntity) entity;
                 ItemStack held = pPlayer.getItemInHand(pHand);
 
+                // If holding a companion, always add one to the locker
                 if (!held.isEmpty() && held.getItem() instanceof CompanionItem) {
-                    if (!locker.hasCompanion()) {
-                        ItemStack toStore = held.copy();
-                        toStore.setCount(1);
-                        locker.insertCompanion(toStore);
-                        held.shrink(1); // remove one from player hand
+                    ItemStack toStore = held.copy();
+                    toStore.setCount(1);
+                    locker.insertCompanion(toStore);
+                    held.shrink(1); // remove one from player hand
 
-                        return InteractionResult.CONSUME; // don't open GUI in this case
-                    } else {
-                        // optional: feedback when already occupied
-                        pPlayer.displayClientMessage(
-                                new TextComponent("This locker already has a companion stored!"), true);
-                        return InteractionResult.CONSUME;
-                    }
+                    // Don't open the GUI in this case, just store
+                    return InteractionResult.CONSUME;
                 }
+
+                // Otherwise, just open the GUI as before
+                NetworkHooks.openGui(((ServerPlayer) pPlayer), locker, pPos);
             } else {
                 throw new IllegalStateException("Our Container provider is missing!");
             }
@@ -61,6 +58,7 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
         return InteractionResult.sidedSuccess(pLevel.isClientSide());
     }
+
 
     @Override
     public RenderShape getRenderShape(BlockState pState) {
