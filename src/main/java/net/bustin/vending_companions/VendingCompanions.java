@@ -5,6 +5,7 @@ import net.bustin.vending_companions.blocks.ModBlocks;
 import net.bustin.vending_companions.blocks.entity.ModBlockEntites;
 import net.bustin.vending_companions.items.ModItems;
 import net.bustin.vending_companions.menu.ModMenuTypes;
+import net.bustin.vending_companions.network.ModNetworks;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.IEventBus;
 import net.minecraftforge.fml.common.Mod;
@@ -29,10 +30,13 @@ public class VendingCompanions {
 
 
 
+
+
         // Forge event bus (game events)
         MinecraftForge.EVENT_BUS.register(this);
     }
 
     private void commonSetup(final FMLCommonSetupEvent event) {
+        ModNetworks.onCommonSetup(event);
     }
 }

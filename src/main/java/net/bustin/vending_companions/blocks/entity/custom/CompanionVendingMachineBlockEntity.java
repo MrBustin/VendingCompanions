@@ -38,7 +38,7 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     // ---------- helpers ----------
 
     public List<ItemStack> getCompanions() {
-        return Collections.unmodifiableList(this.companions);
+        return this.companions; // or Collections.unmodifiableList, but list is fine here
     }
 
     public ItemStack getCompanion(int index) {

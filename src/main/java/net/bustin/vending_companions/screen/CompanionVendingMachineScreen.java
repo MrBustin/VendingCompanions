@@ -1,34 +1,53 @@
 package net.bustin.vending_companions.screen;
 
-import com.mojang.blaze3d.platform.Window;
+
+import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
-import iskallia.vault.client.gui.screen.CompanionHomeScreen;
-import iskallia.vault.container.CompanionHomeContainer;
+import com.mojang.math.Quaternion;
+import com.mojang.math.Vector3f;
 import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
+import net.bustin.vending_companions.network.ModNetworks;
+import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
+import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
 import net.minecraft.core.BlockPos;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
-import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.Level;
-import org.lwjgl.glfw.GLFW;
+
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.entity.EntityType;
+
+
+import iskallia.vault.item.CompanionParticleTrailItem;
+import iskallia.vault.item.CompanionPetManager;
+import iskallia.vault.item.CompanionSeries;
+import iskallia.vault.entity.entity.PetEntity;
+import iskallia.vault.entity.entity.pet.PetHelper;
+import iskallia.vault.init.ModEntities;
 
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
-import static iskallia.vault.block.render.CryoChamberRenderer.mc;
+
 
 
 public class CompanionVendingMachineScreen extends AbstractContainerScreen<CompanionVendingMachineMenu> {
@@ -101,13 +120,27 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private int statsOffY = 118;
 
     private int portraitOffX = 46;
-    private int portraitOffY = 100;
+    private int portraitOffY = 110;
 
     // preview black box behind the companion
     private int previewOffX = 15;
     private int previewOffY = 30;
     private int previewWidth  = 80;
     private int previewHeight = 120;
+
+
+    private Button changeModelButton;
+
+
+    // entity render cache (similar to VH CompanionHomeScreen)
+    private static final Cache<UUID, LivingEntity> CACHED_COMPANIONS =
+            CacheBuilder.newBuilder()
+                    .maximumSize(10L)
+                    .expireAfterAccess(2L, java.util.concurrent.TimeUnit.MINUTES)
+                    .build();
+
+    // where the entity is drawn in the black box
+    private int companionRenderSize = 30;   // "zoom" of the entity
 
     // -------------------------------------------------------------------
 
@@ -187,6 +220,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         renderCompanionDetails(poseStack);
 
+        renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
+
         this.renderTooltip(poseStack, mouseX, mouseY);
     }
 
@@ -225,9 +260,27 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.listWidth = btnWidth;
         this.listHeight = VISIBLE_ROWS * (btnHeight + spacing);
 
+        // 🔄 reset widgets & local list
         companionButtons.clear();
-        this.clearWidgets(); // clear previous buttons/widgets
+        this.clearWidgets();
 
+        // ---------------- CHANGE MODEL BUTTON ----------------
+        int cmSize = 14; // tiny square button
+        int cmX = detailsX + previewOffX + previewWidth - cmSize;
+        int cmY = detailsY + previewOffY - cmSize / 2;
+
+        this.changeModelButton = new Button(
+                cmX,
+                cmY,
+                cmSize,
+                cmSize,
+                new TextComponent("⟳"),
+                btn -> onChangeModelClicked()
+        );
+        this.addRenderableWidget(this.changeModelButton);
+        // -----------------------------------------------------
+
+        // --------- rebuild companion list buttons ----------
         List<ItemStack> companions = this.menu.getCompanions();
 
         int maxRows = companions.size();
@@ -257,6 +310,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             this.addRenderableWidget(button);
         }
     }
+
+
 
     @Override
     protected void renderLabels(PoseStack poseStack, int mouseX, int mouseY) {
@@ -322,7 +377,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         renderCompanionHeartsAndCooldown(poseStack, stack, panelX, panelY);
         renderCompanionXpBar(poseStack, stack, panelX, panelY);
         renderCompanionStats(poseStack, stack, panelX, panelY);
-        renderCompanionPortrait(poseStack, stack, panelX, panelY);
     }
 
     // Name at top-left of the right panel
@@ -412,10 +466,18 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         // 3) Level number above the bar
+        float scale =1.5f;
         String levelStr = String.valueOf(level);
-        int textX = barX + (XP_BAR_WIDTH - this.font.width(levelStr)) / 2;
-        int textY = barY;
-        this.font.drawShadow(poseStack, levelStr, textX, textY, 0xFFF0B100);
+
+
+        int textWidth = (int)(this.font.width(levelStr) * scale);
+        int textX = (barX + (XP_BAR_WIDTH - this.font.width(levelStr)) / 2)-1;
+        int textY = barY -2;
+        poseStack.pushPose();
+        poseStack.translate(textX, textY, 0);
+        poseStack.scale(scale, scale, 1.0f);
+        this.font.drawShadow(poseStack, levelStr, 0, 0, 0xFFF0B100);
+        poseStack.popPose();
     }
 
 
@@ -451,15 +513,302 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.font.draw(poseStack, status,                sx, sy + 24, 0x404040);
     }
 
-    // Portrait: just render the item as an icon
-    private void renderCompanionPortrait(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
-        if (stack.isEmpty()) return;
 
-        int px = panelX + portraitOffX;
-        int py = panelY + portraitOffY;
+    @Nullable
+    private LivingEntity getOrCreateCompanionEntity(ItemStack stack) {
+        if (stack.isEmpty()) return null;
 
-        Minecraft.getInstance().getItemRenderer()
-                .renderAndDecorateItem(stack, px, py);
+        UUID uuid = CompanionItem.getCompanionUUID(stack);
+        if (uuid == null) {
+            return null;
+        }
+
+        // cached?
+        LivingEntity cached = CACHED_COMPANIONS.getIfPresent(uuid);
+        if (cached != null) {
+            return cached;
+        }
+
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null) {
+            return null;
+        }
+
+        CompanionSeries series = CompanionItem.getPetSeries(stack);
+        String type = CompanionItem.getPetType(stack);
+
+        EntityType<PetEntity> entityType;
+        if (series == CompanionSeries.PET) {
+            entityType = PetHelper.getVariant(type)
+                    .map(PetHelper.PetVariant::entityType)
+                    .orElse(ModEntities.PET);
+        } else {
+            entityType = ModEntities.PET;
+        }
+
+        PetEntity pet = entityType.create(level);
+        if (pet == null) {
+            return null;
+        }
+
+        // Apply variant traits / data similar to VH
+        if (series == CompanionSeries.PET) {
+            PetHelper.getVariant(type).ifPresent(variant -> {
+                if (variant.traits() != null) {
+                    variant.traits().apply(pet);
+                }
+            });
+        } else {
+            pet.setCompanionData(stack);
+        }
+
+        // vanilla spawn data
+        CompoundTag spawnData = CompanionItem.getSpawnData(stack);
+        if (spawnData != null) {
+            pet.setVanillaEntityData(spawnData);
+        }
+
+        // particle trails / colours
+        List<Integer> cols = CompanionItem.getAllCosmeticColours(stack);
+        List<CompanionParticleTrailItem.TrailType> types = CompanionItem.getAllCosmeticTrailTypes(stack);
+        List<Integer> validCols = new ArrayList<>();
+        List<CompanionParticleTrailItem.TrailType> validTypes = new ArrayList<>();
+
+        for (int i = 0; i < cols.size(); ++i) {
+            if (i < types.size() && cols.get(i) != -1) {
+                validCols.add(cols.get(i));
+                validTypes.add(types.get(i));
+            }
+        }
+
+        pet.setParticleColours(validCols);
+        pet.setParticleTrailTypes(validTypes);
+
+        CompanionPetManager.applySkinsToEntity(pet, stack);
+
+        CACHED_COMPANIONS.put(uuid, pet);
+        return pet;
+    }
+
+    private void renderCompanionPreviewEntity(PoseStack poseStack, int mouseX, int mouseY) {
+        // No companions? nothing to draw
+        if (this.menu.getCompanions().isEmpty()) {
+            return;
+        }
+
+        if (selectedIndex < 0 || selectedIndex >= this.menu.getCompanions().size()) {
+            selectedIndex = 0;
+        }
+
+        ItemStack stack = this.menu.getCompanion(selectedIndex);
+        if (stack.isEmpty()) {
+            return;
+        }
+
+        LivingEntity entity = getOrCreateCompanionEntity(stack);
+        if (entity == null) {
+            return;
+        }
+
+        // ---- position inside your black preview box ----
+        // center of the box
+        int centerX = detailsX + previewOffX + previewWidth  / 2;
+        // a bit above the bottom edge so the feet aren't cut off
+        int centerY = detailsY + previewOffY + previewHeight - 8 -10;
+
+        // vanilla uses the *difference* between the model position and mouse pos
+        float relMouseX = (float) centerX - mouseX;
+        float relMouseY = (float) centerY - mouseY;
+
+        // scale/zoom – you already have a knob for this
+        int scale = companionRenderSize;
+
+        renderEntityLikeInventory(centerX, centerY, scale, relMouseX, relMouseY, entity);
+    }
+
+    private static void renderEntityLikeInventory(
+            int x, int y, int scale,
+            float mouseX, float mouseY,
+            LivingEntity entity
+    ) {
+        float rotX = (float) Math.atan(mouseX / 40.0F);
+        float rotY = (float) Math.atan(mouseY / 40.0F);
+
+        PoseStack mvStack = RenderSystem.getModelViewStack();
+        mvStack.pushPose();
+        mvStack.translate(x, y, 1050.0D);
+        mvStack.scale(1.0F, 1.0F, -1.0F);
+        RenderSystem.applyModelViewMatrix();
+
+        PoseStack modelStack = new PoseStack();
+        modelStack.translate(0.0D, 0.0D, 1000.0D);
+        modelStack.scale(scale, scale, scale);
+
+        Quaternion zRot = Vector3f.ZP.rotationDegrees(180.0F);
+        Quaternion xRot = Vector3f.XP.rotationDegrees(rotY * 20.0F);
+        zRot.mul(xRot);
+        modelStack.mulPose(zRot);
+
+        // save original rotations
+        float bodyRotY    = entity.yBodyRot;
+        float yRot        = entity.getYRot();
+        float xRotOld     = entity.getXRot();
+        float headRotY0   = entity.yHeadRotO;
+        float headRotY    = entity.yHeadRot;
+
+        // apply mouse-based rotation just like the player preview
+        entity.yBodyRot = 180.0F + rotX * 20.0F;
+        entity.setYRot(180.0F + rotX * 40.0F);
+        entity.setXRot(-rotY * 20.0F);
+        entity.yHeadRot = entity.getYRot();
+        entity.yHeadRotO = entity.getYRot();
+
+        Lighting.setupForEntityInInventory();
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        xRot.conj();
+        dispatcher.overrideCameraOrientation(xRot);
+        dispatcher.setRenderShadow(false);
+
+        MultiBufferSource.BufferSource buffer = Minecraft.getInstance().renderBuffers().bufferSource();
+        RenderSystem.runAsFancy(() -> dispatcher.render(
+                entity,
+                0.0D, 0.0D, 0.0D,
+                0.0F,
+                1.0F,
+                modelStack,
+                buffer,
+                15728880
+        ));
+        buffer.endBatch();
+
+        dispatcher.setRenderShadow(true);
+
+        // restore original rotations
+        entity.yBodyRot = bodyRotY;
+        entity.setYRot(yRot);
+        entity.setXRot(xRotOld);
+        entity.yHeadRotO = headRotY0;
+        entity.yHeadRot  = headRotY;
+
+        mvStack.popPose();
+        RenderSystem.applyModelViewMatrix();
+        Lighting.setupFor3DItems();
+    }
+
+    private void onChangeModelClicked() {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            List<ItemStack> companions = this.menu.getCompanions();
+            if (companions == null || companions.isEmpty()) {
+                return;
+            }
+
+            // safety clamp
+            if (selectedIndex < 0 || selectedIndex >= companions.size()) {
+                selectedIndex = 0;
+            }
+
+            ItemStack stack = companions.get(selectedIndex);
+            if (stack.isEmpty()) return;
+
+            CompanionSeries series = CompanionItem.getPetSeries(stack);
+            String currentType = CompanionItem.getPetType(stack);
+
+            if (currentType == null || currentType.isEmpty()) {
+                return; // nothing we can do
+            }
+
+            String nextType = null;
+
+            // -------- PET series: cycle through unlocked variants --------
+            if (series == CompanionSeries.PET) {
+                PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
+                if (modelType == null) {
+                    return;
+                }
+
+                if (mc.player == null) return;
+
+                List<PetHelper.PetVariant> variants = modelType.getVariants(mc.player.getUUID());
+                if (variants == null || variants.isEmpty()) {
+                    return;
+                }
+
+                // find current
+                int currentIndex = 0;
+                for (int i = 0; i < variants.size(); i++) {
+                    if (variants.get(i).type().equalsIgnoreCase(currentType)) {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                // pick next variant (wrap)
+                int nextIndex = (currentIndex + 1) % variants.size();
+                PetHelper.PetVariant nextVariant = variants.get(nextIndex);
+                nextType = nextVariant.type();
+
+                // if name still matches old variant default name, update to new displayName
+                String currentName = CompanionItem.getPetName(stack);
+                String previousDisplayName = variants.get(currentIndex).displayName();
+                if (currentName == null || currentName.equalsIgnoreCase(previousDisplayName)) {
+                    CompanionItem.setPetName(stack, nextVariant.displayName());
+                }
+            }
+            // -------- LEGEND series: cycle hard-coded forms like VH --------
+            else if (series == CompanionSeries.LEGEND) {
+                String[] possible = new String[] { "eternal", "giant", "minion", "antlion" };
+
+                int idx = 0;
+                for (int i = 0; i < possible.length; i++) {
+                    if (possible[i].equalsIgnoreCase(currentType)) {
+                        idx = i;
+                        break;
+                    }
+                }
+
+                nextType = possible[(idx + 1) % possible.length];
+            }
+
+            // nothing to change
+            if (nextType == null || nextType.equalsIgnoreCase(currentType)) {
+                return;
+            }
+
+            // ---- apply change ONLY to the stack; no list.set(...) ----
+            CompanionItem.setPetType(stack, nextType);
+
+            // invalidate cached entity so preview updates
+            UUID uuid = CompanionItem.getCompanionUUID(stack);
+            if (uuid != null) {
+                CACHED_COMPANIONS.invalidate(uuid);
+            }
+
+            // debug toast so we know it ran
+            if (mc.player != null) {
+                mc.player.displayClientMessage(
+                        new TextComponent("Changed model to: " + nextType),
+                        true
+                );
+            }
+
+            BlockPos pos = this.menu.getBlockPos();
+            int index = this.selectedIndex;
+            String variantType = nextType;
+
+            ModNetworks.CHANNEL.sendToServer(
+                    new ChangeCompanionVariantC2SPacket(pos, index, variantType)
+            );
+
+        } catch (Exception e) {
+            // prevent hard crash and tell us what went wrong
+            if (mc.player != null) {
+                mc.player.displayClientMessage(
+                        new TextComponent("Error changing model: " + e.getClass().getSimpleName()),
+                        true
+                );
+            }
+        }
     }
 
 
