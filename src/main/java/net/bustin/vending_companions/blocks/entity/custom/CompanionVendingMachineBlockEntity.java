@@ -11,6 +11,7 @@ import net.minecraft.nbt.Tag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -34,6 +35,38 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     public CompanionVendingMachineBlockEntity(BlockPos pos, BlockState blockState) {
         super(ModBlockEntites.COMPANION_VENDING_MACHINE_BLOCK_ENTITY.get(), pos, blockState);
     }
+
+    public void equipCompanion(ServerPlayer player, int index) {
+        List<ItemStack> companions = this.getCompanions(); // or your field directly
+
+        if (index < 0 || index >= companions.size()) {
+            return;
+        }
+
+        ItemStack stored = companions.get(index);
+        if (stored.isEmpty()) {
+            return;
+        }
+
+        // 1) Give a COPY to the player
+        ItemStack toGive = stored.copy();
+        boolean added = player.getInventory().add(toGive);
+        if (!added) {
+            player.drop(toGive, false);
+        }
+
+        // 2) Remove this companion from the locker (shrink list)
+        companions.remove(index);   // NonNullList supports remove(int)
+        this.setChanged();
+
+        // Optional: sync BE to clients more aggressively
+        if (this.level != null) {
+            this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
+        }
+    }
+
+
+
 
     // ---------- helpers ----------
 

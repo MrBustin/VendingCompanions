@@ -23,7 +23,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     private final CompanionVendingMachineBlockEntity blockEntity;
     private final Level level;
 
-    // NEW: store the BlockPos so the screen can send it in packets
+    // store the BlockPos so the screen can send it in packets
     private final BlockPos blockPos;
 
     // Internal container for relic slots in the right panel
@@ -42,7 +42,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         super(ModMenuTypes.COMPANION_VENDING_MACHINE_MENU.get(), pContainerId);
         this.blockEntity = (CompanionVendingMachineBlockEntity) entity;
         this.level = inv.player.level;
-        this.blockPos = this.blockEntity.getBlockPos();  // NEW
+        this.blockPos = this.blockEntity.getBlockPos();
 
         // First: machine slots (relics on the right panel)
         addRelicSlots();
@@ -67,10 +67,20 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         return blockEntity;
     }
 
-    // NEW: used by your screen to send the BlockPos in the packet
+    // used by your screen to send the BlockPos in the packet
     public BlockPos getBlockPos() {
         return blockPos;
     }
+
+    public void removeCompanionClient(int index) {
+        List<ItemStack> list = blockEntity.getCompanions();
+        if (list == null) return;
+        if (index < 0 || index >= list.size()) return;
+
+        // Mirror server behavior: shrink the list
+        list.remove(index);
+    }
+
 
     // ---------- slots ----------
 
@@ -78,7 +88,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         int startX = 107; // must match relicSlotOffX
         int startY = 73;  // must match relicSlotOffY
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < RELIC_SLOT_COUNT; i++) {
             int y = startY + i * 18;
             this.addSlot(new Slot(relicContainer, i, startX, y));
         }
@@ -136,7 +146,8 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         ItemStack stackInSlot = slot.getItem();
         ItemStack copy = stackInSlot.copy();
 
-        int machineSlots = RELIC_SLOT_COUNT; // currently only relics; trail slots can be added later
+        // include both relic + trail slots as "machine"
+        int machineSlots = RELIC_SLOT_COUNT + TRAIL_SLOT_COUNT;
         int playerInvStart = machineSlots;
         int playerInvEnd = playerInvStart + 27; // main inventory
         int hotbarStart = playerInvEnd;
@@ -148,8 +159,8 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
                 return empty;
             }
         } else {
-            // From player inventory → try machine relic slots
-            if (!this.moveItemStackTo(stackInSlot, 0, machineSlots, false)) {
+            // From player inventory → try machine relic slots (0..RELIC_SLOT_COUNT)
+            if (!this.moveItemStackTo(stackInSlot, 0, RELIC_SLOT_COUNT, false)) {
                 return empty;
             }
         }
@@ -183,3 +194,4 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         }
     }
 }
+

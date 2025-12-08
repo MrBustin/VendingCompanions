@@ -1,6 +1,7 @@
 package net.bustin.vending_companions.network;
 
 import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
+import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.network.NetworkRegistry;
@@ -30,6 +31,13 @@ public class ModNetworks {
                 ChangeCompanionVariantC2SPacket::toBytes,
                 ChangeCompanionVariantC2SPacket::new,
                 ChangeCompanionVariantC2SPacket::handle
+        );
+        CHANNEL.registerMessage(
+                packetId++,
+                EquipCompanionC2SPacket.class,
+                EquipCompanionC2SPacket::toBytes,
+                EquipCompanionC2SPacket::new,
+                EquipCompanionC2SPacket::handle
         );
     }
 
