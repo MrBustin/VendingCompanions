@@ -855,7 +855,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         super.containerTick();
 
         // simple open/close tween
-        float speed = 0.1f; // higher = snappier
+        float speed = 0.05f; // higher = snappier
 
         if (variantsOpen) {
             if (variantsAnim < 1.0f) {

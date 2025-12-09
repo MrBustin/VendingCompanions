@@ -4,6 +4,7 @@ import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.blocks.entity.ModBlockEntites;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.NonNullList;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
@@ -20,6 +21,10 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraftforge.common.capabilities.Capability;
+import net.minecraftforge.common.util.LazyOptional;
+import net.minecraftforge.items.CapabilityItemHandler;
+import net.minecraftforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
@@ -28,6 +33,15 @@ import java.util.List;
 public class CompanionVendingMachineBlockEntity extends BlockEntity implements MenuProvider {
 
     private static final String COMPANIONS_TAG = "Companions";
+
+    private final ItemStackHandler itemHandler = new ItemStackHandler(1){
+        @Override
+        protected void onContentsChanged(int slot) {
+            setChanged();
+        }
+    };
+
+    private LazyOptional<ItemStackHandler> lazyItemHandler = LazyOptional.empty();
 
     // List of all stored companions
     private final NonNullList<ItemStack> companions = NonNullList.create();
@@ -136,11 +150,15 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
                 }
             }
         }
+        if (tag.contains("inventory")) {
+            itemHandler.deserializeNBT(tag.getCompound("inventory"));
+        }
     }
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
+
         ListTag list = new ListTag();
         for (ItemStack stack : companions) {
             if (!stack.isEmpty()) {
@@ -150,6 +168,8 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
             }
         }
         tag.put(COMPANIONS_TAG, list);
+
+        tag.put("inventory", itemHandler.serializeNBT());
     }
 
     @Override
@@ -160,6 +180,26 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     @Override
     public @Nullable ClientboundBlockEntityDataPacket getUpdatePacket() {
         return ClientboundBlockEntityDataPacket.create(this);
+    }
+
+    @Override
+    public void onLoad() {
+        super.onLoad();
+        lazyItemHandler = LazyOptional.of(()-> itemHandler);
+    }
+
+    @Override
+    public void invalidateCaps() {
+        super.invalidateCaps();
+        lazyItemHandler.invalidate();
+    }
+
+    @Override
+    public <T> LazyOptional<T> getCapability(Capability<T> cap, @Nullable Direction side) {
+        if (cap == CapabilityItemHandler.ITEM_HANDLER_CAPABILITY) {
+            return lazyItemHandler.cast();
+        }
+        return super.getCapability(cap, side);
     }
 }
 

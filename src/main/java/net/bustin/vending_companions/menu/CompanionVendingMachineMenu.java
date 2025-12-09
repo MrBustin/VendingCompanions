@@ -15,6 +15,9 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
+import net.minecraftforge.items.CapabilityItemHandler;
+import net.minecraftforge.items.IItemHandler;
+import net.minecraftforge.items.SlotItemHandler;
 
 import java.util.List;
 
@@ -32,6 +35,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
     private final Container relicContainer = new SimpleContainer(RELIC_SLOT_COUNT);
     private final Container trailContainer = new SimpleContainer(TRAIL_SLOT_COUNT);
+    private final IItemHandler snackHandler;
 
     public CompanionVendingMachineMenu(int pContainerId, Inventory inv, FriendlyByteBuf extraData) {
         // Client-side constructor: read pos from buffer, then look up BE
@@ -44,9 +48,13 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         this.level = inv.player.level;
         this.blockPos = this.blockEntity.getBlockPos();
 
+        this.snackHandler = this.blockEntity
+                .getCapability(CapabilityItemHandler.ITEM_HANDLER_CAPABILITY)
+                .orElseThrow(() -> new IllegalStateException("No item handler!"));
         // First: machine slots (relics on the right panel)
         addRelicSlots();
         addTrailSlots();
+        addSnackSlot();
 
         // Then: player inventory + hotbar
         addPlayerInventory(inv);
@@ -92,6 +100,13 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             int y = startY + i * 18;
             this.addSlot(new Slot(relicContainer, i, startX, y));
         }
+    }
+
+    private void addSnackSlot(){
+
+        int x = -63;
+        int y = 52;
+        this.addSlot(new SlotItemHandler(snackHandler, 0, x, y));
     }
 
     private void addTrailSlots() {
@@ -147,7 +162,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         ItemStack copy = stackInSlot.copy();
 
         // include both relic + trail slots as "machine"
-        int machineSlots = RELIC_SLOT_COUNT + TRAIL_SLOT_COUNT;
+        int machineSlots = RELIC_SLOT_COUNT + TRAIL_SLOT_COUNT+1;
         int playerInvStart = machineSlots;
         int playerInvEnd = playerInvStart + 27; // main inventory
         int hotbarStart = playerInvEnd;
