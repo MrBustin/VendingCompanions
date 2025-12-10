@@ -388,6 +388,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     public void setSelectedCompanionIndex(int index) {
         this.selectedIndex = index;
+        this.menu.setSelectedIndex(index);
         rebuildVariantButtons();
     }
 

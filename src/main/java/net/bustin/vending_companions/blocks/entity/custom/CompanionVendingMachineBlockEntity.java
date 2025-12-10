@@ -39,6 +39,11 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         protected void onContentsChanged(int slot) {
             setChanged();
         }
+
+        @Override
+        public int getSlotLimit(int slot) {
+            return Integer.MAX_VALUE;
+        }
     };
 
     private LazyOptional<ItemStackHandler> lazyItemHandler = LazyOptional.empty();
@@ -91,6 +96,12 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     public ItemStack getCompanion(int index) {
         if (index < 0 || index >= companions.size()) return ItemStack.EMPTY;
         return companions.get(index);
+    }
+
+    public void setCompanion(int index, ItemStack stack) {
+        if (index < 0 || index >= companions.size()) return;
+        companions.set(index, stack);
+        setChanged();
     }
 
     // used by block
