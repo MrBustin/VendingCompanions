@@ -450,7 +450,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         renderCompanionHeartsAndCooldown(poseStack, stack, panelX, panelY);
         renderCompanionXpBar(poseStack, stack, panelX, panelY);
         renderCompanionStats(poseStack, stack, panelX, panelY);
-        //renderTemporalModifier(poseStack, stack, panelX, panelY, mouseX, mouseY);
+        renderTemporalModifier(poseStack, stack, panelX, panelY,mouseX,mouseY);
     }
 
     // Name at top-left of the right panel
@@ -485,83 +485,82 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         int textX = separatorX + 6;
         int textY = y + 1;
 
-        Minecraft.getInstance().font.draw(poseStack, " | ", separatorX, textY, 0x333333);
+        Minecraft.getInstance().font.draw(poseStack, "", separatorX, textY, 0x333333);
 
-        String statusText;
-        if (hearts <= 0) {
-            statusText = " Retired";
-            Minecraft.getInstance().font.drawShadow(poseStack, statusText, textX, textY, 0xFFFFFF);
-        } else if (cooldown <= 0) {
-            statusText = " Ready";
-            Minecraft.getInstance().font.drawShadow(poseStack, statusText, textX, textY, 0x92E27B);
-        } else {
-            statusText = " Resting " +
-                    iskallia.vault.client.gui.helper.UIHelper.formatTimeString((long) cooldown * 20L);
-            Minecraft.getInstance().font.draw(poseStack, statusText, textX, textY, 0x333333);
-        }
-
-        poseStack.popPose();
     }
 
     private void renderTemporalModifier(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
-        // 1) Does this companion have a temporal modifier?
-        Optional<ResourceLocation> optId = CompanionItem.getTemporalModifier(stack);
-        if (optId.isEmpty()) {
+
+        // 1) Check if this companion has a temporal modifier
+        Optional<ResourceLocation> temporalOpt = CompanionItem.getTemporalModifier(stack);
+        if (temporalOpt.isEmpty()) {
             return;
         }
 
-        Optional<VaultModifier<?>> optMod = VaultModifierRegistry.getOpt(optId.get());
-        if (optMod.isEmpty() || optMod.get().getIcon().isEmpty()) {
+        ResourceLocation temporalId = temporalOpt.get();
+
+        // 2) Get VH modifier info (name, color, etc.)
+        Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(temporalId);
+        if (modifierOpt.isEmpty()) {
             return;
         }
 
-        VaultModifier<?> modifier = optMod.get();
-        ResourceLocation iconId = modifier.getIcon().get();
+        VaultModifier<?> modifier = modifierOpt.get();
 
-        // 2) Get the sprite from the VH modifiers atlas
-        TextureAtlasSprite sprite = Minecraft.getInstance()
-                .getTextureAtlas((ResourceLocation) ModTextureAtlases.MODIFIERS)
-                .apply(iconId);
+        // 3) Our texture path:
+        // assets/vending_companions/textures/gui/temporal_modifiers/<path>.png
+        ResourceLocation tex = new ResourceLocation(
+                VendingCompanions.MOD_ID,
+                "textures/gui/temporal_modifiers/" + temporalId.getPath() + ".png"
+        );
 
-        int x = panelX + temporalIconOffX;
-        int y = panelY + temporalIconOffY;
+        int iconX = panelX + temporalIconOffX;
+        int iconY = panelY + temporalIconOffY;
 
-        // 3) Draw the icon
+        int size  = 16;
+        int scale = 2;           // draw 32x32 like VH
+        int drawW = size * scale;
+        int drawH = size * scale;
+
+        // --- draw the icon ---
         poseStack.pushPose();
-        poseStack.translate(0, 0, 150); // above background
+        poseStack.translate(0, 0, 200);
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, sprite.atlas().location());
+        RenderSystem.setShaderTexture(0, tex);
 
-        // 1.18 has a blit overload that takes a sprite
         GuiComponent.blit(
                 poseStack,
-                x, y,
-                0, // blitOffset
-                TEMPORAL_ICON_SIZE, TEMPORAL_ICON_SIZE,
-                sprite
+                iconX, iconY,
+                0, 0,
+                drawW, drawH,
+                drawW, drawH
         );
 
         poseStack.popPose();
 
-        // 4) Tooltip on hover
-        if (mouseX >= x && mouseX < x + TEMPORAL_ICON_SIZE
-                && mouseY >= y && mouseY < y + TEMPORAL_ICON_SIZE) {
+        // --- hover tooltip like VH ---
+        if (mouseX >= iconX && mouseX <= iconX + drawW &&
+                mouseY >= iconY && mouseY <= iconY + drawH) {
 
             List<Component> tooltip = new ArrayList<>();
 
+            // line 1: modifier name in its display color
             tooltip.add(new TextComponent(modifier.getDisplayName())
                     .withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
 
-            int duration = CompanionItem.getTemporalDuration(stack);
-            tooltip.add(new TextComponent("Duration: " +
-                    UIHelper.formatTimeString((long) duration))
-                    .withStyle(ChatFormatting.GRAY));
+            // line 2: Duration
+            int durationTicks = CompanionItem.getTemporalDuration(stack);
+            // VH stores in ticks*? – UIHelper.formatTimeString handles converting to mm:ss
+            String durationStr = "Duration: " + UIHelper.formatTimeString(durationTicks);
+            tooltip.add(new TextComponent(durationStr).withStyle(ChatFormatting.WHITE));
 
+            // use vanilla tooltip rendering (background & border)
             this.renderComponentTooltip(poseStack, tooltip, mouseX, mouseY);
         }
     }
+
 
     // XP bar + level number
     private void renderCompanionXpBar(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
@@ -641,31 +640,15 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         } else if (cooldown <= 0) {
             status = "Ready";
         } else {
-            status = "Resting";
+            status = iskallia.vault.client.gui.helper.UIHelper.formatTimeString((long) cooldown * 20L);
         }
+
 
         // draw the three standard lines
         this.font.draw(poseStack, vaultRuns + " vaults", sx, sy,      0x404040);
         this.font.draw(poseStack, days      + " days",   sx, sy + 12, 0x404040);
         this.font.draw(poseStack, status,                sx, sy + 24, 0x404040);
 
-        // --- temporal modifier (TEXT ONLY, no icon) ---
-        Optional<ResourceLocation> temporalId = CompanionItem.getTemporalModifier(stack);
-        if (temporalId.isPresent()) {
-            Optional<VaultModifier<?>> optMod = VaultModifierRegistry.getOpt(temporalId.get());
-            if (optMod.isPresent()) {
-                VaultModifier<?> modifier = optMod.get();
-
-                String name = modifier.getDisplayName(); // plain String
-                // same duration logic VH uses in their tooltip
-                int duration = CompanionItem.getTemporalDuration(stack);
-                String durationText = UIHelper.formatTimeString((long) duration);
-
-                // draw under the other stats
-                this.font.draw(poseStack, "Temporal: " + name,          sx, sy + 36, 0x404040);
-                this.font.draw(poseStack, "Duration: " + durationText,  sx, sy + 48, 0x808080);
-            }
-        }
     }
 
 
