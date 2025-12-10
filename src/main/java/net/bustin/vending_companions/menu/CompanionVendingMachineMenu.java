@@ -8,8 +8,11 @@ import iskallia.vault.item.CompanionRelicItem;
 import net.bustin.vending_companions.blocks.ModBlocks;
 import net.bustin.vending_companions.blocks.entity.custom.CompanionVendingMachineBlockEntity;
 import net.bustin.vending_companions.menu.slots.SnackSlot;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.network.FriendlyByteBuf;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.Container;
@@ -25,13 +28,14 @@ import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.IItemHandler;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 
 public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
-    private static final int RELIC_SLOT_COUNT = 4;
-    private static final int TRAIL_SLOT_COUNT = 3;
+    public static final int RELIC_SLOT_COUNT = 4;
+    public static final int TRAIL_SLOT_COUNT = 3;
 
     private final CompanionVendingMachineBlockEntity blockEntity;
     private final Level level;
@@ -121,24 +125,20 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             return;
         }
 
-        // relics -> GUI container
-        for (int i = 0; i < trailContainer.getContainerSize(); ++i) {
+        // ---- relics -> GUI container (this was wrong before) ----
+        for (int i = 0; i < relicContainer.getContainerSize(); ++i) {
             final int slot = i;
-
-            int colour = CompanionItem.getCosmeticColour(companionStack, i);
-            if (colour != -1) {
-                CompanionParticleTrailItem.TrailType type = CompanionItem.getCosmeticTrailType(companionStack, i);
-                if (type != null) {
-                    trailContainer.setItem(slot, CompanionParticleTrailItem.create(colour, type));
-                }
-            }
+            CompanionItem.getRelic(companionStack, slot).ifPresent(mods ->
+                    relicContainer.setItem(slot, CompanionRelicItem.create(mods))
+            );
         }
 
-        // trails -> GUI container
+        // ---- trails -> GUI container ----
         for (int i = 0; i < trailContainer.getContainerSize(); ++i) {
             int colour = CompanionItem.getCosmeticColour(companionStack, i);
             if (colour != -1) {
-                CompanionParticleTrailItem.TrailType type = CompanionItem.getCosmeticTrailType(companionStack, i);
+                CompanionParticleTrailItem.TrailType type =
+                        CompanionItem.getCosmeticTrailType(companionStack, i);
                 if (type != null) {
                     trailContainer.setItem(i, CompanionParticleTrailItem.create(colour, type));
                 }
@@ -252,8 +252,8 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     @Override
     public void removed(Player player) {
         super.removed(player);
-        // IMPORTANT: unlike your earlier version, we DON'T drop relicContainer / trailContainer contents.
-        // VH just lets those GUI-only inventories vanish on close; the real data is stored in the companionStack NBT.
+        // We DON'T drop relicContainer / trailContainer contents.
+        // Real data lives in companionStack NBT.
     }
 
     public void removeCompanionClient(int index) {
@@ -263,9 +263,28 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         }
 
         comps.remove(index);
+
+        if (comps.isEmpty()) {
+            // no more companions in the locker
+            clearSelectedCompanion();
+        } else {
+            // clamp selection to valid range and point companionStack at new one
+            this.selectedIndex = Math.min(this.selectedIndex, comps.size() - 1);
+            this.companionStack = comps.get(this.selectedIndex);
+            refreshRelicAndTrailFromCompanion();
+        }
     }
 
-    // ---------- custom slot types (ported from VH) ----------
+    public void clearSelectedCompanion() {
+        // no active selection
+        this.selectedIndex = -1;
+        this.companionStack = ItemStack.EMPTY;
+
+        // clear the GUI relic/trail inventories
+        refreshRelicAndTrailFromCompanion();
+    }
+
+    // ---------- custom slot types (ported from VH, slightly loosened) ----------
 
     public class RelicSlot extends Slot {
         private final int relicIndex;
@@ -290,8 +309,8 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
         @Override
         public boolean mayPickup(Player player) {
-            // you can copy VH's "only with shift" behaviour if you want:
-            // return this.isUnlocked() && player.isShiftKeyDown();
+            // If you want VH-style "shift only", uncomment this:
+            // return this.isUnlocked() && this.hasItem() && player.isShiftKeyDown();
             return this.isUnlocked() && this.hasItem();
         }
 
@@ -321,6 +340,22 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
                 level.sendBlockUpdated(blockPos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
             }
         }
+
+        //tooltip for locked slots
+        public List<Component> getUnlockTooltip() {
+            int levelReq;
+            switch (this.relicIndex) {
+                case 0 -> levelReq = 2;
+                case 1 -> levelReq = 5;
+                case 2 -> levelReq = 8;
+                default -> levelReq = 10;
+            }
+
+            List<Component> tooltip = new ArrayList<>();
+            tooltip.add(new TextComponent("Locked Relic Slot").withStyle(ChatFormatting.RED));
+            tooltip.add(new TextComponent("Unlocks at level " + levelReq).withStyle(ChatFormatting.GRAY));
+            return tooltip;
+        }
     }
 
     public class TrailSlot extends Slot {
@@ -346,6 +381,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
         @Override
         public boolean mayPickup(Player player) {
+            // VH behaviour would be: return this.isUnlocked() && this.hasItem() && player.isShiftKeyDown();
             return this.isUnlocked() && this.hasItem();
         }
 
@@ -379,6 +415,23 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
                 level.sendBlockUpdated(blockPos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
             }
         }
+
+        // 🔒 NEW: tooltip for locked particle slots
+        public List<Component> getUnlockTooltip() {
+            int levelReq;
+            switch (this.trailIndex) {
+                case 0 -> levelReq = 3;
+                case 1 -> levelReq = 6;
+                default -> levelReq = 10;
+            }
+
+            List<Component> tooltip = new ArrayList<>();
+            tooltip.add(new TextComponent("Locked Particle Slot").withStyle(ChatFormatting.RED));
+            tooltip.add(new TextComponent("Unlocks at level " + levelReq).withStyle(ChatFormatting.GRAY));
+            return tooltip;
+        }
     }
+
 }
+
 

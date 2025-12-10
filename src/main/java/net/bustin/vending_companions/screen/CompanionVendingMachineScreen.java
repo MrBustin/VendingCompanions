@@ -6,12 +6,17 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Quaternion;
 import com.mojang.math.Vector3f;
+import iskallia.vault.client.gui.helper.UIHelper;
+import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
+import iskallia.vault.core.vault.modifier.spi.VaultModifier;
+import iskallia.vault.init.ModTextureAtlases;
 import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.bustin.vending_companions.network.ModNetworks;
 import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
 import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
+import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.Button;
@@ -19,13 +24,16 @@ import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.Style;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.entity.player.Inventory;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 
 import com.google.common.cache.Cache;
@@ -46,6 +54,7 @@ import iskallia.vault.init.ModEntities;
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 
@@ -64,11 +73,15 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private static final ResourceLocation SCROLLBAR_TEX =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/scrollbar.png");
 
-    private static final ResourceLocation RELIC_SLOT_BG =
-            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_locked.png");
+    private static final ResourceLocation RELIC_SLOT_BG_UNLOCKED =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_unlocked.png");
+    private static final ResourceLocation RELIC_SLOT_BG_LOCKED =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_locked.png");
 
-    private static final ResourceLocation TRAIL_SLOT_BG =
-            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_trail_slot.png");
+    private static final ResourceLocation TRAIL_SLOT_BG_UNLOCKED =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/trail_slot_unlocked.png");
+    private static final ResourceLocation TRAIL_SLOT_BG_LOCKED =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/trail_slot_locked.png");
 
    private static final ResourceLocation XP_BAR_TEX =
            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar.png");
@@ -129,6 +142,10 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private int previewWidth  = 80;
     private int previewHeight = 120;
 
+    private int temporalIconOffX = 120; // tweak to taste
+    private int temporalIconOffY = 40;
+    private static final int TEMPORAL_ICON_SIZE = 16;
+
 
     // --- variant slide-out menu state ---
     private boolean variantsOpen = false;   // is the menu open?
@@ -185,24 +202,44 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         fill(poseStack, boxX1, boxY1, boxX2, boxY2, 0xFF000000);
 
         // --- relic slot backgrounds on right panel ---
-        RenderSystem.setShaderTexture(0, RELIC_SLOT_BG);
-
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < CompanionVendingMachineMenu.RELIC_SLOT_COUNT; i++) {
             int slotX = this.leftPos + relicSlotOffX;
-            int slotY = this.topPos  + relicSlotOffY + i * 18; // same spacing as menu
+            int slotY = this.topPos  + relicSlotOffY + i * 18;
 
-            // assuming relic_slot.png is 18x18
+            // Slot indices: 0..3 = relic slots
+            Slot slot = this.menu.slots.get(i);
+            boolean unlocked = true;
+
+            if (slot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot) {
+                unlocked = relicSlot.isUnlocked();
+            }
+
+            ResourceLocation tex = unlocked ? RELIC_SLOT_BG_UNLOCKED : RELIC_SLOT_BG_LOCKED;
+            RenderSystem.setShaderTexture(0, tex);
+
+            // assuming 18x18 slot textures
             this.blit(poseStack, slotX, slotY, 0, 0, 18, 18, 18, 18);
         }
 
-        // --- trail slot backgrounds (horizontal row) ---
-        RenderSystem.setShaderTexture(0, TRAIL_SLOT_BG);
-        for (int i = 0; i < 3; i++) {
+// --- trail slot backgrounds on right panel ---
+        int firstTrailIndex = CompanionVendingMachineMenu.RELIC_SLOT_COUNT; // 4
+        for (int i = 0; i < CompanionVendingMachineMenu.TRAIL_SLOT_COUNT; i++) {
             int slotX = this.leftPos + trailSlotOffX;
             int slotY = this.topPos  + trailSlotOffY + i * 18;
 
+            Slot slot = this.menu.slots.get(firstTrailIndex + i);
+            boolean unlocked = true;
+
+            if (slot instanceof CompanionVendingMachineMenu.TrailSlot trailSlot) {
+                unlocked = trailSlot.isUnlocked();
+            }
+
+            ResourceLocation tex = unlocked ? TRAIL_SLOT_BG_UNLOCKED : TRAIL_SLOT_BG_LOCKED;
+            RenderSystem.setShaderTexture(0, tex);
+
             this.blit(poseStack, slotX - 1, slotY - 1, 0, 0, 18, 18, 18, 18);
         }
+
 
         // --- draw scrollbar using your PNG ---
         if (maxScroll > 0) {
@@ -232,7 +269,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         renderVariantOverlay(poseStack);
 
-        renderCompanionDetails(poseStack);
+        renderCompanionDetails(poseStack, mouseX, mouseY);
 
         renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
 
@@ -394,7 +431,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     // ------------------- right-panel rendering -------------------
 
-    private void renderCompanionDetails(PoseStack poseStack) {
+    private void renderCompanionDetails(PoseStack poseStack, int mouseX, int mouseY) {
         List<ItemStack> companions = this.menu.getCompanions();
         if (companions.isEmpty()) return;
 
@@ -413,6 +450,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         renderCompanionHeartsAndCooldown(poseStack, stack, panelX, panelY);
         renderCompanionXpBar(poseStack, stack, panelX, panelY);
         renderCompanionStats(poseStack, stack, panelX, panelY);
+        //renderTemporalModifier(poseStack, stack, panelX, panelY, mouseX, mouseY);
     }
 
     // Name at top-left of the right panel
@@ -463,6 +501,66 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         poseStack.popPose();
+    }
+
+    private void renderTemporalModifier(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
+        // 1) Does this companion have a temporal modifier?
+        Optional<ResourceLocation> optId = CompanionItem.getTemporalModifier(stack);
+        if (optId.isEmpty()) {
+            return;
+        }
+
+        Optional<VaultModifier<?>> optMod = VaultModifierRegistry.getOpt(optId.get());
+        if (optMod.isEmpty() || optMod.get().getIcon().isEmpty()) {
+            return;
+        }
+
+        VaultModifier<?> modifier = optMod.get();
+        ResourceLocation iconId = modifier.getIcon().get();
+
+        // 2) Get the sprite from the VH modifiers atlas
+        TextureAtlasSprite sprite = Minecraft.getInstance()
+                .getTextureAtlas((ResourceLocation) ModTextureAtlases.MODIFIERS)
+                .apply(iconId);
+
+        int x = panelX + temporalIconOffX;
+        int y = panelY + temporalIconOffY;
+
+        // 3) Draw the icon
+        poseStack.pushPose();
+        poseStack.translate(0, 0, 150); // above background
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShaderTexture(0, sprite.atlas().location());
+
+        // 1.18 has a blit overload that takes a sprite
+        GuiComponent.blit(
+                poseStack,
+                x, y,
+                0, // blitOffset
+                TEMPORAL_ICON_SIZE, TEMPORAL_ICON_SIZE,
+                sprite
+        );
+
+        poseStack.popPose();
+
+        // 4) Tooltip on hover
+        if (mouseX >= x && mouseX < x + TEMPORAL_ICON_SIZE
+                && mouseY >= y && mouseY < y + TEMPORAL_ICON_SIZE) {
+
+            List<Component> tooltip = new ArrayList<>();
+
+            tooltip.add(new TextComponent(modifier.getDisplayName())
+                    .withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
+
+            int duration = CompanionItem.getTemporalDuration(stack);
+            tooltip.add(new TextComponent("Duration: " +
+                    UIHelper.formatTimeString((long) duration))
+                    .withStyle(ChatFormatting.GRAY));
+
+            this.renderComponentTooltip(poseStack, tooltip, mouseX, mouseY);
+        }
     }
 
     // XP bar + level number
@@ -519,10 +617,12 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
 
     // Right-side stats: "X vaults", "Y days", "Ready"
+    // Right-side stats: "X vaults", "Y days", "Ready" + temporal modifier
     private void renderCompanionStats(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
         int sx = panelX + statsOffX;
         int sy = panelY + statsOffY;
 
+        // --- base stats (same as before) ---
         int vaultRuns = CompanionItem.getVaultRuns(stack);
 
         long days = 0;
@@ -544,10 +644,30 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             status = "Resting";
         }
 
+        // draw the three standard lines
         this.font.draw(poseStack, vaultRuns + " vaults", sx, sy,      0x404040);
         this.font.draw(poseStack, days      + " days",   sx, sy + 12, 0x404040);
         this.font.draw(poseStack, status,                sx, sy + 24, 0x404040);
+
+        // --- temporal modifier (TEXT ONLY, no icon) ---
+        Optional<ResourceLocation> temporalId = CompanionItem.getTemporalModifier(stack);
+        if (temporalId.isPresent()) {
+            Optional<VaultModifier<?>> optMod = VaultModifierRegistry.getOpt(temporalId.get());
+            if (optMod.isPresent()) {
+                VaultModifier<?> modifier = optMod.get();
+
+                String name = modifier.getDisplayName(); // plain String
+                // same duration logic VH uses in their tooltip
+                int duration = CompanionItem.getTemporalDuration(stack);
+                String durationText = UIHelper.formatTimeString((long) duration);
+
+                // draw under the other stats
+                this.font.draw(poseStack, "Temporal: " + name,          sx, sy + 36, 0x404040);
+                this.font.draw(poseStack, "Duration: " + durationText,  sx, sy + 48, 0x808080);
+            }
+        }
     }
+
 
 
     @Nullable
@@ -1191,6 +1311,32 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             );
         }
     }
+
+    @Override
+    protected void renderTooltip(PoseStack poseStack, int mouseX, int mouseY) {
+        // Check for locked relic / trail slots first
+        if (this.hoveredSlot != null) {
+            Slot slot = this.hoveredSlot;
+
+            if (slot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot) {
+                if (!relicSlot.isUnlocked()) {
+                    this.renderComponentTooltip(poseStack, relicSlot.getUnlockTooltip(), mouseX, mouseY);
+                    return;
+                }
+            }
+
+            if (slot instanceof CompanionVendingMachineMenu.TrailSlot trailSlot) {
+                if (!trailSlot.isUnlocked()) {
+                    this.renderComponentTooltip(poseStack, trailSlot.getUnlockTooltip(), mouseX, mouseY);
+                    return;
+                }
+            }
+        }
+
+        // otherwise normal behaviour (item tooltips etc.)
+        super.renderTooltip(poseStack, mouseX, mouseY);
+    }
+
 
 
 
