@@ -1,4 +1,4 @@
-package net.bustin.vending_companions.screen;
+package net.bustin.vending_companions.screen.buttons;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;

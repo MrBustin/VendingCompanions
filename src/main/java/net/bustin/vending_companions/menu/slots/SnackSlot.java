@@ -20,9 +20,13 @@ public class SnackSlot extends SlotItemHandler {
         return stack.getItem() == allowedItem;
     }
 
-    // Optional: limit stack size to 1, if you want
     @Override
     public int getMaxStackSize(ItemStack stack) {
-        return Integer.MAX_VALUE;
+        return 64;
+    }
+
+    @Override
+    public boolean isActive() {
+        return true;
     }
 }

@@ -2,6 +2,8 @@ package net.bustin.vending_companions.network;
 
 import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
 import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
+import net.bustin.vending_companions.network.c2s.SelectCompanionC2SPacket;
+import net.bustin.vending_companions.network.c2s.ToggleFavouriteC2SPacket;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.network.NetworkRegistry;
@@ -38,6 +40,21 @@ public class ModNetworks {
                 EquipCompanionC2SPacket::toBytes,
                 EquipCompanionC2SPacket::new,
                 EquipCompanionC2SPacket::handle
+        );
+
+        CHANNEL.registerMessage(
+                packetId++,
+                SelectCompanionC2SPacket.class,
+                SelectCompanionC2SPacket::toBytes,
+                SelectCompanionC2SPacket::new,
+                SelectCompanionC2SPacket::handle
+        );
+        CHANNEL.registerMessage(
+                packetId++,
+                ToggleFavouriteC2SPacket.class,
+                ToggleFavouriteC2SPacket::encode,
+                ToggleFavouriteC2SPacket::decode,
+                ToggleFavouriteC2SPacket::handle
         );
     }
 

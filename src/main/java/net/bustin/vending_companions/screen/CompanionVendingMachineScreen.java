@@ -9,22 +9,28 @@ import com.mojang.math.Vector3f;
 import iskallia.vault.client.gui.helper.UIHelper;
 import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
 import iskallia.vault.core.vault.modifier.spi.VaultModifier;
-import iskallia.vault.init.ModTextureAtlases;
 import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.VendingCompanions;
+import net.bustin.vending_companions.menu.CompanionSearchBar;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.bustin.vending_companions.network.ModNetworks;
 import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
 import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
+import net.bustin.vending_companions.network.c2s.SelectCompanionC2SPacket;
+import net.bustin.vending_companions.network.c2s.ToggleFavouriteC2SPacket;
+import net.bustin.vending_companions.screen.buttons.CompanionDisplayButton;
+import net.bustin.vending_companions.screen.buttons.VariantItemButton;
+import net.bustin.vending_companions.screen.buttons.VariantTextButton;
+import net.bustin.vending_companions.screen.buttons.VariantToggleButton;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
 import net.minecraft.client.renderer.entity.EntityRenderDispatcher;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.core.BlockPos;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -77,6 +83,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_unlocked.png");
     private static final ResourceLocation RELIC_SLOT_BG_LOCKED =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_locked.png");
+    private static final ResourceLocation RELIC_SLOT_BG_FILLED =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_filled.png");
 
     private static final ResourceLocation TRAIL_SLOT_BG_UNLOCKED =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/trail_slot_unlocked.png");
@@ -90,6 +98,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
 
 
+    private static final String FAV_TAG = "vc_favourite";
+
     private static final int XP_BAR_WIDTH  = 64;
     private static final int XP_BAR_HEIGHT = 8;
 
@@ -97,7 +107,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private static final int TEX_HEIGHT = 300;
 
     // how many buttons can be visible at once
-    private static final int VISIBLE_ROWS = 5;
+    private static final int VISIBLE_ROWS = 4;
 
     private final List<CompanionDisplayButton> companionButtons = new ArrayList<>();
     private int scrollRowOffset = 0;
@@ -110,6 +120,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     // Right-side details panel
     private int detailsX, detailsY, detailsWidth, detailsHeight;
     private int selectedIndex = -1;
+
+    // Search Bar
+
+    private CompanionSearchBar searchBar;
+    private List<Integer> filteredIndices = new ArrayList<>();
 
     // -------- layout knobs (change these to move stuff around) --------
     // all offsets are relative to (detailsX, detailsY)
@@ -206,18 +221,25 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             int slotX = this.leftPos + relicSlotOffX;
             int slotY = this.topPos  + relicSlotOffY + i * 18;
 
-            // Slot indices: 0..3 = relic slots
             Slot slot = this.menu.slots.get(i);
-            boolean unlocked = true;
 
+            boolean unlocked = true;
             if (slot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot) {
                 unlocked = relicSlot.isUnlocked();
             }
 
-            ResourceLocation tex = unlocked ? RELIC_SLOT_BG_UNLOCKED : RELIC_SLOT_BG_LOCKED;
-            RenderSystem.setShaderTexture(0, tex);
+            boolean filled = unlocked && slot.hasItem();
 
-            // assuming 18x18 slot textures
+            ResourceLocation tex;
+            if (!unlocked) {
+                tex = RELIC_SLOT_BG_LOCKED;
+            } else if (filled) {
+                tex = RELIC_SLOT_BG_FILLED;
+            } else {
+                tex = RELIC_SLOT_BG_UNLOCKED;
+            }
+
+            RenderSystem.setShaderTexture(0, tex);
             this.blit(poseStack, slotX, slotY, 0, 0, 18, 18, 18, 18);
         }
 
@@ -263,18 +285,62 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.renderBackground(poseStack);
         super.render(poseStack, mouseX, mouseY, delta);
 
-        if (changeModelButton.isMouseOverButton(mouseX, mouseY)) {
+        for (CompanionDisplayButton b : companionButtons) {
+            if (b.quickEquipButton != null && b.quickEquipButton.isMouseOver(mouseX, mouseY)) {
+                Component tip = b.quickEquipButton.getTooltip();
+                if (tip != null) {
+                    this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                    break;
+                }
+            }
+        }
+
+        // --- change-model button tooltip ---
+        if (changeModelButton != null && changeModelButton.isMouseOverButton(mouseX, mouseY)) {
             renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
+        }
+
+        // --- variant button tooltips (PET + LEGEND) ---
+        if(variantsAnim >= 1) {
+            for (Button b : variantButtons) {
+                if (b == null || !b.visible) continue;
+
+                if (b.isMouseOver(mouseX, mouseY)) {
+                    if (b instanceof VariantItemButton vib) {
+                        Component tip = vib.getTooltip();
+                        if (tip != null && !tip.getString().isEmpty()) {
+                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                        }
+                        break;
+                    }
+
+                    if (b instanceof VariantTextButton vtb) {
+                        Component tip = vtb.getTooltip();
+                        if (tip != null && !tip.getString().isEmpty()) {
+                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                        }
+                        break;
+                    }
+
+                    // fallback (shouldn't really happen anymore)
+                    Component msg = b.getMessage();
+                    if (msg != null && !msg.getString().isEmpty()) {
+                        this.renderTooltip(poseStack, msg, mouseX, mouseY);
+                    }
+                    break;
+                }
+            }
         }
 
         renderVariantOverlay(poseStack);
 
         renderCompanionDetails(poseStack, mouseX, mouseY);
-
         renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
 
+        // vanilla slot/tooltips etc.
         this.renderTooltip(poseStack, mouseX, mouseY);
     }
+
 
     @Override
     protected void init() {
@@ -295,8 +361,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         int btnX = texLeft + 39;
         int firstBtnY = texTop + 41;
 
-        int btnWidth = 121;
-        int btnHeight = 40;
+        int btnWidth = 122;
+        int btnHeight = 55;
         int spacing = 2;
 
         // Right-side details panel area
@@ -311,13 +377,13 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.listWidth = btnWidth;
         this.listHeight = VISIBLE_ROWS * (btnHeight + spacing);
 
-        // 🔄 reset widgets & local list
+        // reset widgets & local list
         companionButtons.clear();
         this.clearWidgets();
 
         // ---------------- CHANGE MODEL BUTTON ----------------
         int cmX = detailsX + detailsWidth - 9;
-        int cmY = detailsY ;
+        int cmY = detailsY;
 
         ResourceLocation CYCLE = new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/cycle.png");
         ResourceLocation CYCLE_HOVER = new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/cycle_highlight.png");
@@ -333,11 +399,10 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.addRenderableWidget(this.changeModelButton);
         // -----------------------------------------------------
 
-        // ---------------- EQUP BUTTON ----------------
+        // ---------------- EQUIP BUTTON ----------------
         int equipWidth  = 60;
         int equipHeight = 20;
 
-// center it under the preview box
         int equipX = detailsX + previewOffX + (previewWidth - equipWidth) / 2;
         int equipY = detailsY + previewOffY + previewHeight + 6;
 
@@ -347,41 +412,34 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 equipWidth,
                 equipHeight,
                 new TextComponent("Equip"),
-                btn -> onEquipClicked()        // <--- callback below
+                btn -> onEquipClicked()
         );
         this.addRenderableWidget(this.equipButton);
+        // -----------------------------------------------------
 
-        // --------- rebuild companion list buttons ----------
-        List<ItemStack> companions = this.menu.getCompanions();
+        // ---------------- SEARCH BAR ----------------
+        int sbX = listX + 6;
+        int sbY = listY - 20;     // above the list
+        int sbW = listWidth - 14;
+        int sbH = 14;
 
-        int maxRows = companions.size();
-        int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
-        scrollRowOffset = Mth.clamp(scrollRowOffset, 0, maxScrollRows);
+        this.searchBar = new CompanionSearchBar(this.font, sbX, sbY, sbW, sbH);
+        this.searchBar.setOnChange(() -> {
+            this.scrollRowOffset = 0;
+            rebuildFilteredList();
+            rebuildCompanionButtonsOnly();
+        });
+        this.addRenderableWidget(this.searchBar.widget());
+        // -----------------------------------------------------
 
-        for (int i = 0; i < companions.size(); i++) {
-            int row = i;
+        // Build filtered list + buttons
+        rebuildFilteredList();
+        rebuildCompanionButtonsOnly();
 
-            if (row < scrollRowOffset || row >= scrollRowOffset + VISIBLE_ROWS) {
-                continue;
-            }
-
-            int visualRow = row - scrollRowOffset;
-            int y = firstBtnY + visualRow * (btnHeight + spacing);
-
-            CompanionDisplayButton button = new CompanionDisplayButton(
-                    btnX,
-                    y,
-                    btnWidth,
-                    btnHeight,
-                    this.menu,
-                    i,
-                    this
-            );
-            companionButtons.add(button);
-            this.addRenderableWidget(button);
-            rebuildVariantButtons();
-        }
+        // Variant buttons depend on selection, so do it once at end
+        rebuildVariantButtons();
     }
+
 
 
     @Override
@@ -396,16 +454,14 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 mouseY >= listY && mouseY < listY + listHeight;
 
         if (overList) {
-            List<ItemStack> companions = this.menu.getCompanions();
-
-            int maxRows = companions.size();
+            int maxRows = filteredIndices.size();
             int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
 
             if (maxScrollRows > 0 && delta != 0) {
                 int dir = (int) -Math.signum(delta);
                 scrollRowOffset = Mth.clamp(scrollRowOffset + dir, 0, maxScrollRows);
 
-                this.init();
+                rebuildCompanionButtonsOnly();
                 return true;
             }
         }
@@ -413,8 +469,39 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         return super.mouseScrolled(mouseX, mouseY, delta);
     }
 
+
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+
+        // --- PREVENT "flicker" when not enough Vault Gold (client prediction) ---
+        if (button == 0 && hasShiftDown() && this.hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relic) {
+            if (relic.isUnlocked() && relic.hasItem()) {
+                int cost = iskallia.vault.init.ModConfigs.COMPANIONS.getRelicRemovalCost();
+
+                boolean hasEnough = false;
+                if (Minecraft.getInstance().player != null) {
+                    var allItems = iskallia.vault.util.InventoryUtil.findAllItems(Minecraft.getInstance().player);
+                    ItemStack currency = new ItemStack(iskallia.vault.init.ModBlocks.VAULT_GOLD, cost);
+                    hasEnough = iskallia.vault.util.CoinDefinition.hasEnoughCurrency(allItems, currency);
+                }
+
+                if (!hasEnough) {
+                    return true;
+                }
+            }
+        }
+
+        // right-click clear search bar
+        if (button == 1 && this.searchBar != null) {
+            EditBox box = this.searchBar.widget();
+            if (box.isMouseOver(mouseX, mouseY)) {
+                this.searchBar.clear();
+                rebuildFilteredList();
+                rebuildCompanionButtonsOnly();
+                return true;
+            }
+        }
+
         for (CompanionDisplayButton compBtn : companionButtons) {
             if (compBtn.mouseClicked(mouseX, mouseY, button)) {
                 return true;
@@ -423,11 +510,21 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
+
     public void setSelectedCompanionIndex(int index) {
         this.selectedIndex = index;
+
+        // 1) update client immediately (visual)
         this.menu.setSelectedIndex(index);
+
+        // 2) tell the server which companion we're editing (THIS is the missing piece)
+        ModNetworks.CHANNEL.sendToServer(
+                new SelectCompanionC2SPacket(this.menu.getBlockPos(), index)
+        );
+
         rebuildVariantButtons();
     }
+
 
     // ------------------- right-panel rendering -------------------
 
@@ -609,7 +706,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         poseStack.pushPose();
         poseStack.translate(textX, textY, 0);
         poseStack.scale(scale, scale, 1.0f);
-        this.font.drawShadow(poseStack, levelStr, 0, 0, 0xFFF0B100);
+        this.font.draw(poseStack, levelStr, -1,  0, 0xFF000000);
+        this.font.draw(poseStack, levelStr,  1,  0, 0xFF000000);
+        this.font.draw(poseStack, levelStr,  0, -1, 0xFF000000);
+        this.font.draw(poseStack, levelStr,  0,  1, 0xFF000000);
+        this.font.draw(poseStack, levelStr, 0, 0, 0xFFF0B100);
         poseStack.popPose();
     }
 
@@ -958,105 +1059,109 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     protected void containerTick() {
         super.containerTick();
 
-        // simple open/close tween
-        float speed = 0.05f; // higher = snappier
+        if (this.searchBar != null) {
+            this.searchBar.tick();
+        }
+
+        // keep your existing variant tween code below...
+        float speed = 0.05f;
 
         if (variantsOpen) {
-            if (variantsAnim < 1.0f) {
-                variantsAnim = Math.min(1.0f, variantsAnim + speed);
-            }
+            if (variantsAnim < 1.0f) variantsAnim = Math.min(1.0f, variantsAnim + speed);
         } else {
-            if (variantsAnim > 0.0f) {
-                variantsAnim = Math.max(0.0f, variantsAnim - speed);
-            }
+            if (variantsAnim > 0.0f) variantsAnim = Math.max(0.0f, variantsAnim - speed);
         }
 
         updateVariantButtonPositions();
     }
 
+
     private void rebuildVariantButtons() {
-        // remove old ones from the screen
-        for (Button b : variantButtons) {
-            this.removeWidget(b);
-        }
+        for (Button b : variantButtons) this.removeWidget(b);
         variantButtons.clear();
 
         List<ItemStack> companions = this.menu.getCompanions();
         if (companions == null || companions.isEmpty()) return;
 
-        if (selectedIndex < 0 || selectedIndex >= companions.size()) {
-            selectedIndex = 0;
-        }
+        if (selectedIndex < 0 || selectedIndex >= companions.size()) selectedIndex = 0;
 
-        ItemStack stack = this.menu.getCompanion(selectedIndex);
-        if (stack.isEmpty()) return;
+        ItemStack baseStack = this.menu.getCompanion(selectedIndex);
+        if (baseStack.isEmpty()) return;
 
-        CompanionSeries series = CompanionItem.getPetSeries(stack);
-        String currentType = CompanionItem.getPetType(stack);
+        CompanionSeries series = CompanionItem.getPetSeries(baseStack);
+        String currentType = CompanionItem.getPetType(baseStack);
         if (currentType == null || currentType.isEmpty()) return;
 
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
-        // collect variant types we want to show
-        List<String> variantTypes = new ArrayList<>();
+        // base anchor (right side of details panel)
+        int baseX = detailsX + detailsWidth + 2;
+        int baseY = detailsY + 5;
+
+        int btnWidth = 18;
+        int btnHeight = 18;
 
         if (series == CompanionSeries.PET) {
             PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
             if (modelType == null) return;
 
             List<PetHelper.PetVariant> variants = modelType.getVariants(mc.player.getUUID());
-            for (PetHelper.PetVariant v : variants) {
-                variantTypes.add(v.type());
+            for (int i = 0; i < variants.size(); i++) {
+                PetHelper.PetVariant v = variants.get(i);
+                String type = v.type();
+                if (type == null || type.isEmpty()) continue;
+
+                int y = baseY + i * 20;
+
+                // IMPORTANT: make an icon stack that looks like this variant
+                ItemStack icon = baseStack.copy();
+                CompanionItem.setPetType(icon, type);
+
+                Component tip = new TextComponent(v.displayName());
+
+                Button b = new VariantItemButton(
+                        baseX, y, 18, 18,
+                        icon,
+                        tip,
+                        btn -> changeVariant(type)
+                );
+
+                variantButtons.add(b);
+                this.addRenderableWidget(b);
             }
         } else if (series == CompanionSeries.LEGEND) {
-            // same 4 as VH
-            variantTypes.add("eternal");
-            variantTypes.add("giant");
-            variantTypes.add("minion");
-            variantTypes.add("antlion");
+            String[] types = new String[] { "eternal", "giant", "minion", "antlion" };
+
+            for (int i = 0; i < types.length; i++) {
+                String type = types[i];
+                int y = baseY + i * 20;
+
+                String labelText = type.substring(0, 1).toUpperCase();   // G / M
+                Component tooltip = new TextComponent(
+                        type.substring(0, 1).toUpperCase() + type.substring(1)
+                ); // Giant / Minion / etc.
+
+                Button b = new VariantTextButton(
+                        baseX,
+                        y,
+                        18,
+                        18,
+                        new TextComponent(labelText),
+                        tooltip,
+                        btn -> changeVariant(type)
+                );
+
+                variantButtons.add(b);
+                this.addRenderableWidget(b);
+            }
         } else {
-            // other series don't have variants
             return;
         }
 
-        // base anchor (right side of details panel)
-        int baseX = detailsX + detailsWidth + 2 ;
-        int baseY = detailsY + 5;
-
-        for (int i = 0; i < variantTypes.size(); i++) {
-            String type = variantTypes.get(i);
-
-            // label = first letter (like VH), fallback to "?" if somehow blank
-            String labelText;
-            if (type.isEmpty()) {
-                labelText = "?";
-            } else {
-                labelText = type.substring(0, 1).toUpperCase();
-            }
-
-            int btnWidth = 18;
-            int btnHeight = 18;
-
-            // y spacing: 20px between buttons
-            int y = baseY + i * 20;
-
-            Button b = new Button(
-                    baseX,       // x will be adjusted by animation
-                    y,
-                    btnWidth,
-                    btnHeight,
-                    new TextComponent(labelText),
-                    btn -> changeVariant(type)   // <-- Click changes to this variant
-            );
-
-            variantButtons.add(b);
-            this.addRenderableWidget(b);
-        }
-
-        // start them hidden if menu is currently closed
         updateVariantButtonPositions();
     }
+
 
     private void updateVariantButtonPositions() {
         if (variantButtons.isEmpty()) return;
@@ -1320,7 +1425,233 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         super.renderTooltip(poseStack, mouseX, mouseY);
     }
 
+    @Override
+    public List<Component> getTooltipFromItem(ItemStack stack) {
+        List<Component> tooltip = super.getTooltipFromItem(stack);
 
+        if (this.hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relic) {
+            if (relic.isUnlocked() && relic.hasItem()) {
+                tooltip.add(TextComponent.EMPTY);
+
+                ItemStack comp = (selectedIndex >= 0) ? this.menu.getCompanion(selectedIndex) : ItemStack.EMPTY;
+
+                if (!comp.isEmpty() && CompanionItem.getCompanionHearts(comp) <= 0) {
+                    tooltip.add(new TextComponent("You cannot take this relic out").withStyle(ChatFormatting.RED));
+                    return tooltip;
+                }
+
+                int cost = iskallia.vault.init.ModConfigs.COMPANIONS.getRelicRemovalCost();
+
+                boolean hasEnough = false;
+                if (Minecraft.getInstance().player != null) {
+                    // pouch-aware: includes coin pouch + inventory
+                    List<iskallia.vault.util.InventoryUtil.ItemAccess> allItems =
+                            iskallia.vault.util.InventoryUtil.findAllItems(Minecraft.getInstance().player);
+
+                    ItemStack currency = new ItemStack(iskallia.vault.init.ModBlocks.VAULT_GOLD, cost);
+                    hasEnough = iskallia.vault.util.CoinDefinition.hasEnoughCurrency(allItems, currency);
+                }
+
+                tooltip.add(new TextComponent("Removal Cost: ").withStyle(ChatFormatting.WHITE)
+                        .append(new TextComponent(cost + " Vault Gold")
+                                .withStyle(hasEnough ? ChatFormatting.GREEN : ChatFormatting.RED)));
+
+                tooltip.add(TextComponent.EMPTY);
+                tooltip.add(new TextComponent("Shift left click to remove relic").withStyle(ChatFormatting.GRAY));
+            }
+        }
+
+        return tooltip;
+    }
+
+
+
+
+    public void onHealPressed(int companionIndex) {
+        // send packet to server: heal this companion
+        System.out.println("Companion Healed!");
+    }
+
+    private void rebuildFilteredList() {
+        List<ItemStack> companions = this.menu.getCompanions();
+
+        // If search bar is missing for some reason, fall back to "show all"
+        if (this.searchBar == null) {
+            this.filteredIndices = new ArrayList<>();
+            for (int i = 0; i < companions.size(); i++) this.filteredIndices.add(i);
+        } else {
+            this.filteredIndices = this.searchBar.filter(companions);
+        }
+
+        // keep selectedIndex valid (selectedIndex is REAL index)
+        if (this.selectedIndex >= 0 && !this.filteredIndices.contains(this.selectedIndex)) {
+            this.selectedIndex = this.filteredIndices.isEmpty() ? -1 : this.filteredIndices.get(0);
+            this.menu.setSelectedIndex(this.selectedIndex);
+        }
+
+        // if nothing selected but we have results, select first
+        if (this.selectedIndex == -1 && !this.filteredIndices.isEmpty()) {
+            this.selectedIndex = this.filteredIndices.get(0);
+            this.menu.setSelectedIndex(this.selectedIndex);
+        }
+
+        // favourites first (stable within each group)
+        this.filteredIndices.sort((a, b) -> {
+            boolean fa = isFavouriteIndex(a);
+            boolean fb = isFavouriteIndex(b);
+            if (fa != fb) return fa ? -1 : 1;   // fav -> top
+            return Integer.compare(a, b);       // keep original order otherwise
+        });
+
+    }
+
+    private void rebuildCompanionButtonsOnly() {
+        // remove old companion row widgets only (leave searchbar, equip button, etc)
+        for (CompanionDisplayButton b : companionButtons) {
+            this.removeWidget(b);
+            this.removeWidget(b.favouriteButton);
+        }
+
+        for (CompanionDisplayButton b : companionButtons) {
+            this.removeWidget(b);
+            this.removeWidget(b.quickEquipButton);
+        }
+        companionButtons.clear();
+
+        int btnX = this.listX;
+        int firstBtnY = this.listY;
+        int btnWidth = this.listWidth;
+        int btnHeight = 55;
+        int spacing = 2;
+
+        int maxRows = filteredIndices.size();
+        int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
+        scrollRowOffset = Mth.clamp(scrollRowOffset, 0, maxScrollRows);
+
+        for (int row = scrollRowOffset; row < Math.min(maxRows, scrollRowOffset + VISIBLE_ROWS); row++) {
+            int realIndex = filteredIndices.get(row);
+
+            int visualRow = row - scrollRowOffset;
+            int y = firstBtnY + visualRow * (btnHeight + spacing);
+
+            CompanionDisplayButton button = new CompanionDisplayButton(
+                    btnX,
+                    y,
+                    btnWidth,
+                    btnHeight,
+                    new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button.png"),
+                    new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button_highlighted.png"),
+                    this.menu,
+                    realIndex,     // IMPORTANT: real index (not row)
+                    this
+            );
+
+            companionButtons.add(button);
+            this.addRenderableWidget(button);
+            this.addRenderableWidget(button.quickEquipButton);
+            this.addRenderableWidget(button.favouriteButton);
+        }
+    }
+
+    public void quickEquipFromRow(int realIndex) {
+
+        List<ItemStack> companions = this.menu.getCompanions();
+        if (companions == null || companions.isEmpty()) return;
+        if (realIndex < 0 || realIndex >= companions.size()) return;
+
+        ItemStack stack = this.menu.getCompanion(realIndex);
+        if (stack.isEmpty()) return;
+
+        BlockPos pos = this.menu.getBlockPos();
+
+        // 1) send to server
+        ModNetworks.CHANNEL.sendToServer(new EquipCompanionC2SPacket(pos, realIndex));
+
+        // 2) mirror removal on client
+        this.menu.removeCompanionClient(realIndex);
+
+        // 3) keep selection valid
+        List<ItemStack> updated = this.menu.getCompanions();
+        if (updated.isEmpty()) {
+            this.selectedIndex = -1;
+        } else {
+            if (this.selectedIndex >= updated.size()) this.selectedIndex = updated.size() - 1;
+            if (this.selectedIndex < 0) this.selectedIndex = 0;
+            this.menu.setSelectedIndex(this.selectedIndex);
+        }
+
+        // 4) rebuild UI
+        this.init();
+    }
+
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        // If the search box is focused, let it consume keys FIRST (prevents 'E' closing the screen)
+        if (this.searchBar != null) {
+            var box = this.searchBar.widget();
+
+            if (keyCode == 256 && box.isFocused()) { // 256 = GLFW_KEY_ESCAPE
+                box.setFocus(false);
+                return true;
+            }
+            if (box.isFocused()) {
+                if (box.keyPressed(keyCode, scanCode, modifiers)) return true;
+
+                // Also swallow inventory keybinds while typing (E)
+                return true;
+            }
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        // Forward typed characters to the search box when focused
+        if (this.searchBar != null) {
+            var box = this.searchBar.widget();
+            if (box.isFocused() && box.charTyped(codePoint, modifiers)) {
+                return true;
+            }
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
+
+    private boolean isFavouriteIndex(int realIndex) {
+        List<ItemStack> comps = this.menu.getCompanions();
+        if (comps == null || realIndex < 0 || realIndex >= comps.size()) return false;
+
+        ItemStack s = comps.get(realIndex); // IMPORTANT: from the actual list
+        return !s.isEmpty() && s.hasTag() && s.getTag().getBoolean(FAV_TAG);
+    }
+
+    public void toggleFavourite(int realIndex) {
+
+        List<ItemStack> comps = this.menu.getCompanions();
+        if (comps == null || comps.isEmpty()) return;
+        if (realIndex < 0 || realIndex >= comps.size()) return;
+
+        ItemStack stack = comps.get(realIndex); // IMPORTANT: from the actual list
+        if (stack.isEmpty()) return;
+
+        boolean newFav = !isFavouriteIndex(realIndex);
+        stack.getOrCreateTag().putBoolean(FAV_TAG, newFav);
+
+        ModNetworks.CHANNEL.sendToServer(
+                new ToggleFavouriteC2SPacket(this.menu.getBlockPos(), realIndex, newFav)
+        );
+
+
+        // re-sort + rebuild visible rows
+        rebuildFilteredList();
+        rebuildCompanionButtonsOnly();
+    }
+
+    public boolean isFavourite(int realIndex) {
+        return isFavouriteIndex(realIndex); // or inline the tag check
+    }
 
 
 }

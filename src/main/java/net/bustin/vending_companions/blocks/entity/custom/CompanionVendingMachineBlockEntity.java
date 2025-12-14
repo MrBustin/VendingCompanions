@@ -38,11 +38,14 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         @Override
         protected void onContentsChanged(int slot) {
             setChanged();
+            if (level != null && !level.isClientSide) {
+                level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            }
         }
 
         @Override
         public int getSlotLimit(int slot) {
-            return Integer.MAX_VALUE;
+            return 64;
         }
     };
 
@@ -104,6 +107,10 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         setChanged();
     }
 
+    public ItemStackHandler getSnackHandler() {
+        return itemHandler;
+    }
+
     // used by block
     public boolean hasCompanion() {
         return !companions.isEmpty();
@@ -149,22 +156,21 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     @Override
     public void load(CompoundTag tag) {
         super.load(tag);
-        companions.clear();
 
+        companions.clear();
         if (tag.contains(COMPANIONS_TAG, Tag.TAG_LIST)) {
             ListTag list = tag.getList(COMPANIONS_TAG, Tag.TAG_COMPOUND);
             for (int i = 0; i < list.size(); i++) {
-                CompoundTag itemTag = list.getCompound(i);
-                ItemStack stack = ItemStack.of(itemTag);
-                if (!stack.isEmpty()) {
-                    companions.add(stack);
-                }
+                ItemStack stack = ItemStack.of(list.getCompound(i));
+                if (!stack.isEmpty()) companions.add(stack);
             }
         }
-        if (tag.contains("inventory")) {
+
+        if (tag.contains("inventory", Tag.TAG_COMPOUND)) {
             itemHandler.deserializeNBT(tag.getCompound("inventory"));
         }
     }
+
 
     @Override
     protected void saveAdditional(CompoundTag tag) {
