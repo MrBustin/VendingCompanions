@@ -27,6 +27,7 @@ public class CompanionDisplayButton extends AbstractButton {
 
     private final ResourceLocation normalTex;
     private final ResourceLocation hoverTex;
+    private final ResourceLocation selectedTex;
     private final CompanionVendingMachineMenu menu;
     private final int companionIndex;
     private final CompanionVendingMachineScreen parent;
@@ -47,12 +48,13 @@ public class CompanionDisplayButton extends AbstractButton {
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
 
     public CompanionDisplayButton(int x, int y, int width, int height,ResourceLocation normalTex,
-                                  ResourceLocation hoverTex,
+                                  ResourceLocation hoverTex, ResourceLocation selectedTex,
                                   CompanionVendingMachineMenu menu,
                                   int companionIndex, CompanionVendingMachineScreen parent) {
         super(x, y, width, height, new TextComponent(""));
         this.normalTex = normalTex;
         this.hoverTex = hoverTex;
+        this.selectedTex = selectedTex;
         this.menu = menu;
         this.companionIndex = companionIndex;
         this.parent = parent;
@@ -113,7 +115,15 @@ public class CompanionDisplayButton extends AbstractButton {
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
 
-        ResourceLocation tex = this.isHoveredOrFocused() ? hoverTex : normalTex;
+        ResourceLocation tex;
+        if (isSelected()) {
+            tex = selectedTex;
+        } else if (this.isHoveredOrFocused()) {
+            tex = hoverTex;
+        } else {
+            tex = normalTex;
+        }
+
         RenderSystem.setShaderTexture(0, tex);
 
         // Draw at the button size (should be 122x55 for Option A)
@@ -267,7 +277,7 @@ public class CompanionDisplayButton extends AbstractButton {
     private void renderCompanionName(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
 
         int nameOffX = 5;
-        int nameOffY = 4;
+        int nameOffY = 5;
         String name = CompanionItem.getPetName(stack);
         if (name == null || name.isEmpty()) name = "Companion";
 
@@ -433,12 +443,11 @@ public class CompanionDisplayButton extends AbstractButton {
         );
     }
 
+    private boolean isSelected() {
+        return parent != null && parent.getSelectedIndex() == this.companionIndex;
+    }
+
+
     @Override
     public void updateNarration(NarrationElementOutput narrationElementOutput) { }
 }
-
-
-
-
-
-

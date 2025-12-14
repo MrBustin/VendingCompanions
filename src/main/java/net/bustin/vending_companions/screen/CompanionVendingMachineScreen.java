@@ -75,9 +75,15 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private static final ResourceLocation SCROLLBAR_TEX =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/scrollbar.png");
+    private static final ResourceLocation SCROLLBAR_TEX_HOVER =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/scrollbar_highlighted.png");
+    private static final ResourceLocation SCROLLBAR_TEX_DISABLED =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/scrollbar_disabled.png");
+
 
     private static final ResourceLocation RELIC_SLOT_BG_UNLOCKED =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_unlocked.png");
+
     private static final ResourceLocation RELIC_SLOT_BG_LOCKED =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/relic_slot_locked.png");
     private static final ResourceLocation RELIC_SLOT_BG_FILLED =
@@ -95,6 +101,17 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
 
     private static final String FAV_TAG = "vc_favourite";
+    private static final String FAV_TIME_TAG = "vc_favourite_time";
+
+    private final java.util.Map<UUID, Boolean> favCache = new java.util.HashMap<>();
+    private final java.util.Map<UUID, Long> favTimeCache = new java.util.HashMap<>();
+
+    private @Nullable UUID getId(ItemStack stack) {
+        if (stack.isEmpty()) return null;
+        UUID id = CompanionItem.getCompanionUUID(stack);
+        return id;
+    }
+
 
     private HealButton healButton;
 
@@ -105,7 +122,9 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private static final int TEX_HEIGHT = 300;
 
     private static final int VISIBLE_ROWS = 4;
-    private static final int TEMPORAL_ICON_SIZE = 16;
+
+    private boolean draggingScrollbar = false;
+    private int scrollbarGrabOffsetY = 0; // where inside the knob we grabbed (in screen pixels)
 
     // -------------------------------------------------------------------
     // State / Layout
@@ -116,8 +135,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     // Scroll area config (box where buttons live)
     private int listX, listY, listWidth, listHeight;
-    private int scrollOffset = 0;
-    private int maxScroll = 0;
 
     // Right-side details panel
     private int detailsX, detailsY, detailsWidth, detailsHeight;
@@ -147,9 +164,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private int statsOffX = 127;
     private int statsOffY = 118;
-
-    private int portraitOffX = 46;
-    private int portraitOffY = 110;
 
     // preview black box behind the companion
     private int previewOffX = 15;
@@ -196,7 +210,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.imageHeight = 300;
 
         if (!menu.getCompanions().isEmpty()) {
-            this.selectedIndex = 0;
+            this.selectedIndex = -1;
         }
     }
 
@@ -209,7 +223,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         super.init();
 
         // labels
-        this.titleLabelX = -28;
+        this.titleLabelX = -40;
         this.titleLabelY = -5;
         this.inventoryLabelX = 110;
         this.inventoryLabelY = 176;
@@ -300,7 +314,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         // -----------------------------------------------------
 
         // ---------------- SEARCH BAR ----------------
-        int sbX = listX + 6;
+        int sbX = listX - 8;
         int sbY = listY - 20;     // above the list
         int sbW = listWidth - 14;
         int sbH = 14;
@@ -316,6 +330,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         // Build filtered list + buttons
         rebuildFilteredList();
+        selectDefaultFromFiltered();
         rebuildCompanionButtonsOnly();
 
         // Variant buttons depend on selection, so do it once at end
@@ -415,27 +430,45 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         // --- draw scrollbar ---
-        int maxRows = filteredIndices.size();
-        int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
+        int maxScrollRows = getMaxScrollRows();
 
-        if (maxScrollRows > 0) {
-            RenderSystem.setShader(GameRenderer::getPositionTexShader);
-            RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
-            RenderSystem.setShaderTexture(0, SCROLLBAR_TEX);
+// positions/sizes
+        int baseX = getKnobX();
+        int baseY = getBaseY();
 
-            int barX = listX + listWidth + 4;
-            int barY = listY;
+        int knobW = getKnobW();
+        int knobH = getKnobH();
 
-            // your on-screen knob size
-            int knobW = 8;
-            int knobH = 12;
+        int texW = 16;
+        int texH = 42;
 
-            float t = (float) scrollRowOffset / (float) maxScrollRows;
-            int knobY = barY + (int) ((listHeight - knobH) * t);
+// if not scrollable, lock knob at top
+        int knobY = (maxScrollRows > 0) ? getKnobY() : baseY;
 
-            // IMPORTANT: texture size is 16x42
-            this.blit(poseStack, barX, knobY, 0, 0, knobW, knobH, 16, 42);
+// choose texture
+        ResourceLocation tex;
+        if (maxScrollRows <= 0) {
+            tex = SCROLLBAR_TEX_DISABLED;
+        } else {
+            boolean hover = draggingScrollbar || isMouseOverKnob(mouseX, mouseY);
+            tex = hover ? SCROLLBAR_TEX_HOVER : SCROLLBAR_TEX;
         }
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
+        RenderSystem.setShaderTexture(0, tex);
+
+// scale native 16x42 -> knobW/knobH
+        float scaleX = (float) knobW / texW;
+        float scaleY = (float) knobH / texH;
+
+        poseStack.pushPose();
+        poseStack.translate(baseX, knobY, 200);
+        poseStack.scale(scaleX, scaleY, 1.0F);
+        this.blit(poseStack, 0, 0, 0, 0, texW, texH, texW, texH);
+        poseStack.popPose();
+
+
 
     }
 
@@ -585,6 +618,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         return tooltip;
     }
+
 
     // ------------------- right-panel rendering -------------------
 
@@ -983,6 +1017,67 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     // Input handling
     // -------------------------------------------------------------------
 
+    // Scrollbar logic
+    private int getMaxScrollRows() {
+        int maxRows = filteredIndices.size();
+        return Math.max(0, maxRows - VISIBLE_ROWS);
+    }
+
+    private int getKnobX() {
+        return listX - 16 - 2; // your baseX
+    }
+
+    private int getBaseY() {
+        return listY - 3; // your baseY
+    }
+
+    private int getExtraDown() {
+        return 3; // you added this
+    }
+
+    private int getKnobW() { return 10; }
+    private int getKnobH() { return 32; }
+
+    private int getTrackLenPx() {
+        return (listHeight - getKnobH()) + getExtraDown();
+    }
+
+    private int getKnobY() {
+        int maxScrollRows = getMaxScrollRows();
+        if (maxScrollRows <= 0) return getBaseY();
+
+        float t = (float) scrollRowOffset / (float) maxScrollRows;
+        return getBaseY() + (int) (getTrackLenPx() * t);
+    }
+
+    private boolean isMouseOverKnob(double mouseX, double mouseY) {
+        int x = getKnobX();
+        int y = getKnobY();
+        return mouseX >= x && mouseX < x + getKnobW()
+                && mouseY >= y && mouseY < y + getKnobH();
+    }
+
+    private void setScrollFromMouse(double mouseY) {
+        int maxScrollRows = getMaxScrollRows();
+        if (maxScrollRows <= 0) return;
+
+        int baseY = getBaseY();
+        int trackLen = getTrackLenPx();
+
+        // mouse position mapped to knob top (account for where we grabbed inside knob)
+        double knobTop = mouseY - baseY - scrollbarGrabOffsetY;
+
+        double t = knobTop / (double) trackLen;
+        t = Mth.clamp((float) t, 0.0F, 1.0F);
+
+        int newOffset = Mth.clamp((int) Math.round(t * maxScrollRows), 0, maxScrollRows);
+
+        if (newOffset != scrollRowOffset) {
+            scrollRowOffset = newOffset;
+            rebuildCompanionButtonsOnly();
+        }
+    }
+
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
         boolean overList = mouseX >= listX && mouseX < listX + listWidth &&
@@ -1006,6 +1101,32 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+
+        //Scrollbar logic
+        if (button == 0 && getMaxScrollRows() > 0) {
+            if (isMouseOverKnob(mouseX, mouseY)) {
+                draggingScrollbar = true;
+                scrollbarGrabOffsetY = (int) (mouseY - getKnobY()); // grab point inside knob
+                return true;
+            }
+
+            // optional: clicking the track jumps the knob
+            int trackX = getKnobX();
+            int trackW = getKnobW();
+            int trackY = getBaseY();
+            int trackH = getTrackLenPx() + getKnobH(); // full clickable track area
+
+            boolean overTrack = mouseX >= trackX && mouseX < trackX + trackW
+                    && mouseY >= trackY && mouseY < trackY + trackH;
+
+            if (overTrack) {
+                // center knob on click
+                scrollbarGrabOffsetY = getKnobH() / 2;
+                setScrollFromMouse(mouseY);
+                draggingScrollbar = true; // feels nice to allow immediate drag
+                return true;
+            }
+        }
 
         // --- PREVENT "flicker" when not enough Vault Gold (client prediction) ---
         if (button == 0 && hasShiftDown() && this.hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relic) {
@@ -1043,6 +1164,24 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
+        if (draggingScrollbar && button == 0) {
+            setScrollFromMouse(mouseY);
+            return true;
+        }
+        return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+    }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0 && draggingScrollbar) {
+            draggingScrollbar = false;
+            return true;
+        }
+        return super.mouseReleased(mouseX, mouseY, button);
     }
 
     @Override
@@ -1178,6 +1317,20 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         this.init();
+    }
+
+    private void selectDefaultFromFiltered() {
+        if (this.filteredIndices == null || this.filteredIndices.isEmpty()) {
+            this.selectedIndex = -1;
+            this.menu.setSelectedIndex(-1);
+            return;
+        }
+
+        int first = this.filteredIndices.get(0);
+        if (this.selectedIndex != first) {
+            this.selectedIndex = first;
+            this.menu.setSelectedIndex(first);
+        }
     }
 
     // -------------------------------------------------------------------
@@ -1415,8 +1568,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         int baseX = detailsX + detailsWidth + 2;
         int baseY = detailsY + 5;
 
-        int btnWidth = 18;
-        int btnHeight = 18;
 
         if (series == CompanionSeries.PET) {
             PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
@@ -1517,6 +1668,19 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private void rebuildFilteredList() {
         List<ItemStack> companions = this.menu.getCompanions();
 
+        for (ItemStack s : this.menu.getCompanions()) {
+            UUID id = getId(s);
+            if (id == null) continue;
+
+            if (!favCache.containsKey(id)) {
+                boolean fav = s.hasTag() && s.getTag().getBoolean(FAV_TAG);
+                favCache.put(id, fav);
+            }
+            if (!favTimeCache.containsKey(id) && s.hasTag() && s.getTag().contains(FAV_TIME_TAG)) {
+                favTimeCache.put(id, s.getTag().getLong(FAV_TIME_TAG));
+            }
+        }
+
         if (this.searchBar == null) {
             this.filteredIndices = new ArrayList<>();
             for (int i = 0; i < companions.size(); i++) this.filteredIndices.add(i);
@@ -1539,6 +1703,13 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             boolean fa = isFavouriteIndex(a);
             boolean fb = isFavouriteIndex(b);
             if (fa != fb) return fa ? -1 : 1;
+
+            if (fa) {
+                long ta = getFavouriteTimeIndex(a);
+                long tb = getFavouriteTimeIndex(b);
+                if (ta != tb) return Long.compare(tb, ta); // newest fav first
+            }
+
             return Integer.compare(a, b);
         });
     }
@@ -1580,6 +1751,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                     btnHeight,
                     new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button.png"),
                     new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button_highlighted.png"),
+                    new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button_selected.png"),
                     this.menu,
                     realIndex,
                     this
@@ -1592,6 +1764,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
     }
 
+    public int getSelectedIndex() {
+        return this.selectedIndex;
+    }
+
+
     // -------------------------------------------------------------------
     // Favourites
     // -------------------------------------------------------------------
@@ -1601,6 +1778,10 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         if (comps == null || realIndex < 0 || realIndex >= comps.size()) return false;
 
         ItemStack s = comps.get(realIndex);
+        UUID id = getId(s);
+        if (id != null && favCache.containsKey(id)) return favCache.get(id);
+
+        // fallback to NBT if cache not populated yet
         return !s.isEmpty() && s.hasTag() && s.getTag().getBoolean(FAV_TAG);
     }
 
@@ -1612,9 +1793,16 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         ItemStack stack = comps.get(realIndex);
         if (stack.isEmpty()) return;
 
-        boolean newFav = !isFavouriteIndex(realIndex);
-        stack.getOrCreateTag().putBoolean(FAV_TAG, newFav);
+        UUID id = getId(stack);
+        if (id == null) return;
 
+        boolean newFav = !isFavouriteIndex(realIndex);
+
+        favCache.put(id, newFav);
+        if (newFav) favTimeCache.put(id, System.currentTimeMillis());
+        else favTimeCache.remove(id);
+
+        // server authoritative toggle
         ModNetworks.CHANNEL.sendToServer(
                 new ToggleFavouriteC2SPacket(this.menu.getBlockPos(), realIndex, newFav)
         );
@@ -1623,8 +1811,21 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         rebuildCompanionButtonsOnly();
     }
 
+
     public boolean isFavourite(int realIndex) {
         return isFavouriteIndex(realIndex);
+    }
+
+    private long getFavouriteTimeIndex(int realIndex) {
+        List<ItemStack> comps = this.menu.getCompanions();
+        if (comps == null || realIndex < 0 || realIndex >= comps.size()) return 0L;
+
+        ItemStack s = comps.get(realIndex);
+        UUID id = getId(s);
+        if (id != null && favTimeCache.containsKey(id)) return favTimeCache.get(id);
+
+        if (s.hasTag() && s.getTag().contains(FAV_TIME_TAG)) return s.getTag().getLong(FAV_TIME_TAG);
+        return 0L;
     }
 }
 

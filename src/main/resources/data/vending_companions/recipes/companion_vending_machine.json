@@ -1,0 +1,19 @@
+{
+  "type": "minecraft:crafting_shaped",
+  "pattern": [
+    "BLB",
+    "GOG",
+    "BCB"
+  ],
+  "key": {
+    "B": { "item": "the_vault:black_chromatic_steel_ingot" },
+    "L": { "item": "minecraft:lectern" },
+    "G": { "item": "minecraft:glass_pane" },
+    "O": { "item": "the_vault:echo_pog" },
+    "C": {"item":  "the_vault:companion_home"}
+  },
+  "result": {
+    "item": "vending_companions:companion_vending_machine",
+    "count": 1
+  }
+}

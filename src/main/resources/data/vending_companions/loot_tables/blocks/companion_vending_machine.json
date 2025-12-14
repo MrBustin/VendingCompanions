@@ -1,0 +1,25 @@
+{
+  "type": "minecraft:block",
+  "pools": [
+    {
+      "rolls": 1,
+      "entries": [
+        {
+          "type": "minecraft:item",
+          "name": "vending_companions:companion_vending_machine",
+          "functions": [
+            { "function": "minecraft:copy_name", "source": "block_entity" },
+            {
+              "function": "minecraft:copy_nbt",
+              "source": "block_entity",
+              "ops": [
+                { "source": "Companions", "target": "BlockEntityTag.Companions", "op": "replace" },
+                { "source": "inventory",  "target": "BlockEntityTag.inventory",  "op": "replace" }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
