@@ -1,9 +1,6 @@
 package net.bustin.vending_companions.network;
 
-import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
-import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
-import net.bustin.vending_companions.network.c2s.SelectCompanionC2SPacket;
-import net.bustin.vending_companions.network.c2s.ToggleFavouriteC2SPacket;
+import net.bustin.vending_companions.network.c2s.*;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraftforge.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.minecraftforge.network.NetworkRegistry;
@@ -55,6 +52,13 @@ public class ModNetworks {
                 ToggleFavouriteC2SPacket::encode,
                 ToggleFavouriteC2SPacket::decode,
                 ToggleFavouriteC2SPacket::handle
+        );
+        CHANNEL.registerMessage(
+                packetId++,
+                HealCompanionC2SPacket.class,
+                HealCompanionC2SPacket::encode,
+                HealCompanionC2SPacket::decode,
+                HealCompanionC2SPacket::handle
         );
     }
 

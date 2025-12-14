@@ -14,14 +14,8 @@ import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.menu.CompanionSearchBar;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.bustin.vending_companions.network.ModNetworks;
-import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
-import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
-import net.bustin.vending_companions.network.c2s.SelectCompanionC2SPacket;
-import net.bustin.vending_companions.network.c2s.ToggleFavouriteC2SPacket;
-import net.bustin.vending_companions.screen.buttons.CompanionDisplayButton;
-import net.bustin.vending_companions.screen.buttons.VariantItemButton;
-import net.bustin.vending_companions.screen.buttons.VariantTextButton;
-import net.bustin.vending_companions.screen.buttons.VariantToggleButton;
+import net.bustin.vending_companions.network.c2s.*;
+import net.bustin.vending_companions.screen.buttons.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
@@ -101,6 +95,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
 
     private static final String FAV_TAG = "vc_favourite";
+
+    private HealButton healButton;
 
     private static final int XP_BAR_WIDTH  = 64;
     private static final int XP_BAR_HEIGHT = 8;
@@ -243,6 +239,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.listWidth = btnWidth;
         this.listHeight = VISIBLE_ROWS * (btnHeight + spacing);
 
+
+
         // reset widgets & local list
         companionButtons.clear();
         this.clearWidgets();
@@ -263,6 +261,24 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 btn -> toggleVariantMenu()
         );
         this.addRenderableWidget(this.changeModelButton);
+
+        // ---------------- HEAL BUTTON ----------------
+
+        int hbX = detailsX - 5;
+        int hbY = detailsY + 35;
+
+        this.healButton = new HealButton(
+                hbX, hbY,
+                18,18,
+                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/heal_button.png"),
+                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/heal_button_highlighted.png"),
+                new TextComponent("Heal Companion"),
+                () -> onHealPressed(this.selectedIndex)
+
+        );
+
+
+        this.addRenderableWidget(this.healButton);
         // -----------------------------------------------------
 
         // ---------------- EQUIP BUTTON ----------------
@@ -304,6 +320,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         // Variant buttons depend on selection, so do it once at end
         rebuildVariantButtons();
+
+        updateHealButtonState();
     }
 
     @Override
@@ -396,83 +414,107 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             this.blit(poseStack, slotX - 1, slotY - 1, 0, 0, 18, 18, 18, 18);
         }
 
-        // --- draw scrollbar using your PNG ---
-        if (maxScroll > 0) {
+        // --- draw scrollbar ---
+        int maxRows = filteredIndices.size();
+        int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
+
+        if (maxScrollRows > 0) {
+            RenderSystem.setShader(GameRenderer::getPositionTexShader);
+            RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
             RenderSystem.setShaderTexture(0, SCROLLBAR_TEX);
 
             int barX = listX + listWidth + 4;
             int barY = listY;
-            int barWidth = 8;
-            int barHeight = listHeight;
 
-            int knobHeight = 12;
-            float t = (float) scrollOffset / (float) maxScroll;
-            int knobY = barY + (int) ((barHeight - knobHeight) * t);
+            // your on-screen knob size
+            int knobW = 8;
+            int knobH = 12;
 
-            this.blit(poseStack, barX, knobY, 0, 0, barWidth, knobHeight);
+            float t = (float) scrollRowOffset / (float) maxScrollRows;
+            int knobY = barY + (int) ((listHeight - knobH) * t);
+
+            // IMPORTANT: texture size is 16x42
+            this.blit(poseStack, barX, knobY, 0, 0, knobW, knobH, 16, 42);
         }
+
     }
 
     @Override
     public void render(PoseStack poseStack, int mouseX, int mouseY, float delta) {
         this.renderBackground(poseStack);
+
+        // hide during super.render so it doesn't get drawn UNDER the hearts
+        boolean healWasVisible = this.healButton != null && this.healButton.visible;
+        if (this.healButton != null) this.healButton.visible = false;
+
         super.render(poseStack, mouseX, mouseY, delta);
+
+        // --- YOUR custom renders (hearts etc.) ---
+        renderVariantOverlay(poseStack);
+        renderCompanionDetails(poseStack, mouseX, mouseY);
+        renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
+
+        // restore visibility state
+        if (this.healButton != null) this.healButton.visible = healWasVisible;
+
+        // draw heal button on TOP of hearts
+        if (this.healButton != null && this.healButton.visible) {
+            poseStack.pushPose();
+            poseStack.translate(0, 0, 500); // big Z so it sits on top
+            this.healButton.render(poseStack, mouseX, mouseY, delta);
+            poseStack.popPose();
+        }
+
+        // -------- tooltips (after everything is drawn) --------
 
         // quick equip tooltips
         for (CompanionDisplayButton b : companionButtons) {
             if (b.quickEquipButton != null && b.quickEquipButton.isMouseOver(mouseX, mouseY)) {
                 Component tip = b.quickEquipButton.getTooltip();
-                if (tip != null) {
-                    this.renderTooltip(poseStack, tip, mouseX, mouseY);
-                    break;
-                }
+                if (tip != null) this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                return;
             }
         }
 
         // change-model tooltip
         if (changeModelButton != null && changeModelButton.isMouseOverButton(mouseX, mouseY)) {
-            renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
+            this.renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
+            return;
         }
 
-        // variant button tooltips (PET + LEGEND)
+        // heal tooltip
+        if (healButton != null && healButton.visible && healButton.isMouseOver(mouseX, mouseY)) {
+            Component tip = healButton.getTooltip(); // no cast
+            if (tip != null && !tip.getString().isEmpty()) {
+                this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                return;
+            }
+        }
+
+        // variant button tooltips...
         if (variantsAnim >= 1) {
             for (Button b : variantButtons) {
                 if (b == null || !b.visible) continue;
-
                 if (b.isMouseOver(mouseX, mouseY)) {
                     if (b instanceof VariantItemButton vib) {
                         Component tip = vib.getTooltip();
-                        if (tip != null && !tip.getString().isEmpty()) {
-                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
-                        }
-                        break;
-                    }
-
-                    if (b instanceof VariantTextButton vtb) {
+                        if (tip != null && !tip.getString().isEmpty()) this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                    } else if (b instanceof VariantTextButton vtb) {
                         Component tip = vtb.getTooltip();
-                        if (tip != null && !tip.getString().isEmpty()) {
-                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
-                        }
-                        break;
+                        if (tip != null && !tip.getString().isEmpty()) this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                    } else {
+                        Component msg = b.getMessage();
+                        if (msg != null && !msg.getString().isEmpty()) this.renderTooltip(poseStack, msg, mouseX, mouseY);
                     }
-
-                    // fallback
-                    Component msg = b.getMessage();
-                    if (msg != null && !msg.getString().isEmpty()) {
-                        this.renderTooltip(poseStack, msg, mouseX, mouseY);
-                    }
-                    break;
+                    return;
                 }
             }
         }
 
-        renderVariantOverlay(poseStack);
-        renderCompanionDetails(poseStack, mouseX, mouseY);
-        renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
-
-        // vanilla slot/tooltips etc.
+        // vanilla slot/item tooltips last
         this.renderTooltip(poseStack, mouseX, mouseY);
     }
+
 
     @Override
     protected void renderLabels(PoseStack poseStack, int mouseX, int mouseY) {
@@ -1042,6 +1084,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         // update client immediately
         this.menu.setSelectedIndex(index);
 
+        updateHealButtonState();
+
         // tell server which companion we're editing
         ModNetworks.CHANNEL.sendToServer(
                 new SelectCompanionC2SPacket(this.menu.getBlockPos(), index)
@@ -1136,9 +1180,42 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.init();
     }
 
+    // -------------------------------------------------------------------
+    // Healing
+    // -------------------------------------------------------------------
+
+    public boolean needsHealing(ItemStack stack){
+        int hearts    = CompanionItem.getCompanionHearts(stack);
+        int maxHearts = CompanionItem.getCompanionMaxHearts(stack);
+
+        return hearts != maxHearts;
+    }
+
+    private void updateHealButtonState() {
+        if (healButton == null) return;
+
+        if (selectedIndex < 0 || selectedIndex >= menu.getCompanions().size()) {
+            healButton.visible = false;
+            return;
+        }
+
+        ItemStack stack = menu.getCompanion(selectedIndex);
+        if (stack.isEmpty()) {
+            healButton.visible = false;
+            return;
+        }
+
+        boolean needsHeal = needsHealing(stack);
+
+        healButton.visible = needsHeal;
+        healButton.active  = needsHeal;
+    }
+
     public void onHealPressed(int companionIndex) {
-        // send packet to server: heal this companion
-        System.out.println("Companion Healed!");
+        ModNetworks.CHANNEL.sendToServer(
+                new HealCompanionC2SPacket(this.menu.getBlockPos(),companionIndex)
+        );
+
     }
 
     // -------------------------------------------------------------------

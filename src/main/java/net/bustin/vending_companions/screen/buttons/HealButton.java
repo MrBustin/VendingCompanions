@@ -11,56 +11,61 @@ import net.minecraft.resources.ResourceLocation;
 
 public class HealButton extends AbstractButton {
 
-    private final CompanionDisplayButton parent;
-    private final Runnable onHeal;
+    private static final int TEX_W = 18;
+    private static final int TEX_H = 18;
 
     private final ResourceLocation normalTex;
     private final ResourceLocation hoverTex;
 
-    private final int relX;
-    private final int relY;
+    private final Runnable onPress;
+    private final TextComponent tooltip;
 
-    public HealButton(CompanionDisplayButton parent, int relX, int relY,
-                      int w, int h, ResourceLocation normalTex, ResourceLocation hoverTex, Runnable onHeal) {
-        super(parent.x + relX, parent.y + relY, w, h, TextComponent.EMPTY);
-        this.parent = parent;
-        this.relX = relX;
-        this.relY = relY;
-        this.onHeal = onHeal;
+    public HealButton(int x, int y, int w, int h,
+                      ResourceLocation normalTex,
+                      ResourceLocation hoverTex,
+                      TextComponent tooltip,
+                      Runnable onPress) {
+        super(x, y, w, h, TextComponent.EMPTY);
         this.normalTex = normalTex;
         this.hoverTex = hoverTex;
-    }
-
-    /** Keep button aligned with parent (scrolling) */
-    public void syncToParent() {
-        this.x = parent.x + relX;
-        this.y = parent.y + relY;
-        this.visible = parent.visible;
-        this.active = parent.active;
+        this.tooltip = tooltip;
+        this.onPress = onPress;
     }
 
     @Override
     public void onPress() {
-        onHeal.run();
+        this.onPress.run();
+    }
+
+    public TextComponent getTooltip() {
+        return tooltip;
     }
 
     @Override
     public void renderButton(PoseStack poseStack, int mouseX, int mouseY, float partialTick) {
         if (!visible) return;
 
-        final int TEX_W = 18;
-        final int TEX_H = 18;
+        float sx = (float) this.width  / (float) TEX_W;
+        float sy = (float) this.height / (float) TEX_H;
+
+        poseStack.pushPose();
+        poseStack.translate(this.x, this.y, 0);
+        poseStack.scale(sx, sy, 1.0f);
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderColor(1F, 1F, 1F, this.alpha);
 
         ResourceLocation tex = this.isHoveredOrFocused() ? hoverTex : normalTex;
-        RenderSystem.setShaderTexture(0,tex);
+        RenderSystem.setShaderTexture(0, tex);
 
-        blit(poseStack, this.x, this.y, 0, 0, TEX_W, TEX_H, TEX_W, TEX_H);
+        blit(poseStack, 0, 0, 0, 0, TEX_W, TEX_H, TEX_W, TEX_H);
+
+        poseStack.popPose();
     }
 
     @Override
     public void updateNarration(NarrationElementOutput out) {}
 }
+
+
 

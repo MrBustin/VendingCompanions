@@ -17,6 +17,7 @@ import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
@@ -133,6 +134,16 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
 
     private static boolean isCompanion(ItemStack stack) {
         return !stack.isEmpty() && stack.getItem() instanceof CompanionItem;
+    }
+
+    public boolean consumeOneSnack(Item snackItem) {
+        // slot 0 is your only slot
+        ItemStack in = itemHandler.getStackInSlot(0);
+        if (in.isEmpty() || in.getItem() != snackItem) return false;
+
+        // actually remove 1 (calls onContentsChanged -> setChanged + sendBlockUpdated)
+        ItemStack removed = itemHandler.extractItem(0, 1, false);
+        return !removed.isEmpty();
     }
 
     // ---------- MenuProvider ----------
