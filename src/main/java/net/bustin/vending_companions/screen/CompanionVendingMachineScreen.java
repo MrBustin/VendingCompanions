@@ -69,7 +69,10 @@ import java.util.UUID;
 public class CompanionVendingMachineScreen extends AbstractContainerScreen<CompanionVendingMachineMenu> {
 
 
-    //Resource Locations
+    // -------------------------------------------------------------------
+    // Constants / Resources
+    // -------------------------------------------------------------------
+
     private static final ResourceLocation TEXTURE =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_vending_machine_gui.png");
 
@@ -91,12 +94,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private static final ResourceLocation TRAIL_SLOT_BG_LOCKED =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/trail_slot_locked.png");
 
-   private static final ResourceLocation XP_BAR_TEX =
-           new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar.png");
+    private static final ResourceLocation XP_BAR_TEX =
+            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar.png");
 
     private static final ResourceLocation XP_BAR_FILL_TEX =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
-
 
     private static final String FAV_TAG = "vc_favourite";
 
@@ -106,8 +108,12 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private static final int TEX_WIDTH = 370;
     private static final int TEX_HEIGHT = 300;
 
-    // how many buttons can be visible at once
     private static final int VISIBLE_ROWS = 4;
+    private static final int TEMPORAL_ICON_SIZE = 16;
+
+    // -------------------------------------------------------------------
+    // State / Layout
+    // -------------------------------------------------------------------
 
     private final List<CompanionDisplayButton> companionButtons = new ArrayList<>();
     private int scrollRowOffset = 0;
@@ -122,7 +128,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private int selectedIndex = -1;
 
     // Search Bar
-
     private CompanionSearchBar searchBar;
     private List<Integer> filteredIndices = new ArrayList<>();
 
@@ -134,7 +139,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private int trailSlotOffX = 207;
     private int trailSlotOffY = 91;
-
 
     private int nameOffX = 0;
     private int nameOffY = 7;
@@ -159,10 +163,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private int temporalIconOffX = 120; // tweak to taste
     private int temporalIconOffY = 40;
-    private static final int TEMPORAL_ICON_SIZE = 16;
 
+    // -------------------------------------------------------------------
+    // Variant slide-out menu state
+    // -------------------------------------------------------------------
 
-    // --- variant slide-out menu state ---
     private boolean variantsOpen = false;   // is the menu open?
     private float variantsAnim = 0.0f;      // 0 = closed, 1 = fully open
 
@@ -171,17 +176,20 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private Button equipButton;
 
+    // -------------------------------------------------------------------
+    // Entity preview cache (similar to VH CompanionHomeScreen)
+    // -------------------------------------------------------------------
 
-    // entity render cache (similar to VH CompanionHomeScreen)
     private static final Cache<UUID, LivingEntity> CACHED_COMPANIONS =
             CacheBuilder.newBuilder()
                     .maximumSize(10L)
                     .expireAfterAccess(2L, java.util.concurrent.TimeUnit.MINUTES)
                     .build();
 
-    // where the entity is drawn in the black box
     private int companionRenderSize = 30;   // "zoom" of the entity
 
+    // -------------------------------------------------------------------
+    // Constructor
     // -------------------------------------------------------------------
 
     public CompanionVendingMachineScreen(CompanionVendingMachineMenu menu,
@@ -196,151 +204,9 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
     }
 
-    @Override
-    protected void renderBg(PoseStack poseStack, float partialTick, int mouseX, int mouseY) {
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, TEXTURE);
-
-        int x = (this.width - this.imageWidth) / 2;
-        int y = (this.height - this.imageHeight) / 2;
-
-        this.blit(poseStack, x - 65, y - 10, 0, 0, this.imageWidth, this.imageHeight, TEX_WIDTH, TEX_HEIGHT);
-
-        // --- black preview background behind companion ---
-        int boxX1 = detailsX + previewOffX;
-        int boxY1 = detailsY + previewOffY;
-        int boxX2 = boxX1 + previewWidth;
-        int boxY2 = boxY1 + previewHeight;
-
-        // ARGB: 0xFF000000 = solid black
-        fill(poseStack, boxX1, boxY1, boxX2, boxY2, 0xFF000000);
-
-        // --- relic slot backgrounds on right panel ---
-        for (int i = 0; i < CompanionVendingMachineMenu.RELIC_SLOT_COUNT; i++) {
-            int slotX = this.leftPos + relicSlotOffX;
-            int slotY = this.topPos  + relicSlotOffY + i * 18;
-
-            Slot slot = this.menu.slots.get(i);
-
-            boolean unlocked = true;
-            if (slot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot) {
-                unlocked = relicSlot.isUnlocked();
-            }
-
-            boolean filled = unlocked && slot.hasItem();
-
-            ResourceLocation tex;
-            if (!unlocked) {
-                tex = RELIC_SLOT_BG_LOCKED;
-            } else if (filled) {
-                tex = RELIC_SLOT_BG_FILLED;
-            } else {
-                tex = RELIC_SLOT_BG_UNLOCKED;
-            }
-
-            RenderSystem.setShaderTexture(0, tex);
-            this.blit(poseStack, slotX, slotY, 0, 0, 18, 18, 18, 18);
-        }
-
-// --- trail slot backgrounds on right panel ---
-        int firstTrailIndex = CompanionVendingMachineMenu.RELIC_SLOT_COUNT; // 4
-        for (int i = 0; i < CompanionVendingMachineMenu.TRAIL_SLOT_COUNT; i++) {
-            int slotX = this.leftPos + trailSlotOffX;
-            int slotY = this.topPos  + trailSlotOffY + i * 18;
-
-            Slot slot = this.menu.slots.get(firstTrailIndex + i);
-            boolean unlocked = true;
-
-            if (slot instanceof CompanionVendingMachineMenu.TrailSlot trailSlot) {
-                unlocked = trailSlot.isUnlocked();
-            }
-
-            ResourceLocation tex = unlocked ? TRAIL_SLOT_BG_UNLOCKED : TRAIL_SLOT_BG_LOCKED;
-            RenderSystem.setShaderTexture(0, tex);
-
-            this.blit(poseStack, slotX - 1, slotY - 1, 0, 0, 18, 18, 18, 18);
-        }
-
-
-        // --- draw scrollbar using your PNG ---
-        if (maxScroll > 0) {
-            RenderSystem.setShaderTexture(0, SCROLLBAR_TEX);
-
-            int barX = listX + listWidth + 4;
-            int barY = listY;
-            int barWidth = 8;
-            int barHeight = listHeight;
-
-            int knobHeight = 12;
-            float t = (float) scrollOffset / (float) maxScroll;
-            int knobY = barY + (int) ((barHeight - knobHeight) * t);
-
-            this.blit(poseStack, barX, knobY, 0, 0, barWidth, knobHeight);
-        }
-    }
-
-    @Override
-    public void render(PoseStack poseStack, int mouseX, int mouseY, float delta) {
-        this.renderBackground(poseStack);
-        super.render(poseStack, mouseX, mouseY, delta);
-
-        for (CompanionDisplayButton b : companionButtons) {
-            if (b.quickEquipButton != null && b.quickEquipButton.isMouseOver(mouseX, mouseY)) {
-                Component tip = b.quickEquipButton.getTooltip();
-                if (tip != null) {
-                    this.renderTooltip(poseStack, tip, mouseX, mouseY);
-                    break;
-                }
-            }
-        }
-
-        // --- change-model button tooltip ---
-        if (changeModelButton != null && changeModelButton.isMouseOverButton(mouseX, mouseY)) {
-            renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
-        }
-
-        // --- variant button tooltips (PET + LEGEND) ---
-        if(variantsAnim >= 1) {
-            for (Button b : variantButtons) {
-                if (b == null || !b.visible) continue;
-
-                if (b.isMouseOver(mouseX, mouseY)) {
-                    if (b instanceof VariantItemButton vib) {
-                        Component tip = vib.getTooltip();
-                        if (tip != null && !tip.getString().isEmpty()) {
-                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
-                        }
-                        break;
-                    }
-
-                    if (b instanceof VariantTextButton vtb) {
-                        Component tip = vtb.getTooltip();
-                        if (tip != null && !tip.getString().isEmpty()) {
-                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
-                        }
-                        break;
-                    }
-
-                    // fallback (shouldn't really happen anymore)
-                    Component msg = b.getMessage();
-                    if (msg != null && !msg.getString().isEmpty()) {
-                        this.renderTooltip(poseStack, msg, mouseX, mouseY);
-                    }
-                    break;
-                }
-            }
-        }
-
-        renderVariantOverlay(poseStack);
-
-        renderCompanionDetails(poseStack, mouseX, mouseY);
-        renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
-
-        // vanilla slot/tooltips etc.
-        this.renderTooltip(poseStack, mouseX, mouseY);
-    }
-
+    // -------------------------------------------------------------------
+    // Screen lifecycle
+    // -------------------------------------------------------------------
 
     @Override
     protected void init() {
@@ -440,621 +306,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         rebuildVariantButtons();
     }
 
-
-
-    @Override
-    protected void renderLabels(PoseStack poseStack, int mouseX, int mouseY) {
-        this.font.draw(poseStack, this.title, this.titleLabelX, this.titleLabelY, 0x404040);
-        this.font.draw(poseStack, this.playerInventoryTitle, this.inventoryLabelX, this.inventoryLabelY, 0x404040);
-    }
-
-    @Override
-    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
-        boolean overList = mouseX >= listX && mouseX < listX + listWidth &&
-                mouseY >= listY && mouseY < listY + listHeight;
-
-        if (overList) {
-            int maxRows = filteredIndices.size();
-            int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
-
-            if (maxScrollRows > 0 && delta != 0) {
-                int dir = (int) -Math.signum(delta);
-                scrollRowOffset = Mth.clamp(scrollRowOffset + dir, 0, maxScrollRows);
-
-                rebuildCompanionButtonsOnly();
-                return true;
-            }
-        }
-
-        return super.mouseScrolled(mouseX, mouseY, delta);
-    }
-
-
-    @Override
-    public boolean mouseClicked(double mouseX, double mouseY, int button) {
-
-        // --- PREVENT "flicker" when not enough Vault Gold (client prediction) ---
-        if (button == 0 && hasShiftDown() && this.hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relic) {
-            if (relic.isUnlocked() && relic.hasItem()) {
-                int cost = iskallia.vault.init.ModConfigs.COMPANIONS.getRelicRemovalCost();
-
-                boolean hasEnough = false;
-                if (Minecraft.getInstance().player != null) {
-                    var allItems = iskallia.vault.util.InventoryUtil.findAllItems(Minecraft.getInstance().player);
-                    ItemStack currency = new ItemStack(iskallia.vault.init.ModBlocks.VAULT_GOLD, cost);
-                    hasEnough = iskallia.vault.util.CoinDefinition.hasEnoughCurrency(allItems, currency);
-                }
-
-                if (!hasEnough) {
-                    return true;
-                }
-            }
-        }
-
-        // right-click clear search bar
-        if (button == 1 && this.searchBar != null) {
-            EditBox box = this.searchBar.widget();
-            if (box.isMouseOver(mouseX, mouseY)) {
-                this.searchBar.clear();
-                rebuildFilteredList();
-                rebuildCompanionButtonsOnly();
-                return true;
-            }
-        }
-
-        for (CompanionDisplayButton compBtn : companionButtons) {
-            if (compBtn.mouseClicked(mouseX, mouseY, button)) {
-                return true;
-            }
-        }
-        return super.mouseClicked(mouseX, mouseY, button);
-    }
-
-
-    public void setSelectedCompanionIndex(int index) {
-        this.selectedIndex = index;
-
-        // 1) update client immediately (visual)
-        this.menu.setSelectedIndex(index);
-
-        // 2) tell the server which companion we're editing (THIS is the missing piece)
-        ModNetworks.CHANNEL.sendToServer(
-                new SelectCompanionC2SPacket(this.menu.getBlockPos(), index)
-        );
-
-        rebuildVariantButtons();
-    }
-
-
-    // ------------------- right-panel rendering -------------------
-
-    private void renderCompanionDetails(PoseStack poseStack, int mouseX, int mouseY) {
-        List<ItemStack> companions = this.menu.getCompanions();
-        if (companions.isEmpty()) return;
-
-        // clamp in case the list changed size
-        if (selectedIndex < 0 || selectedIndex >= companions.size()) {
-            selectedIndex = 0;
-        }
-
-        ItemStack stack = this.menu.getCompanion(selectedIndex);
-        if (stack.isEmpty()) return;
-
-        int panelX = detailsX;
-        int panelY = detailsY;
-
-        renderCompanionName(poseStack, stack, panelX, panelY);
-        renderCompanionHeartsAndCooldown(poseStack, stack, panelX, panelY);
-        renderCompanionXpBar(poseStack, stack, panelX, panelY);
-        renderCompanionStats(poseStack, stack, panelX, panelY);
-        renderTemporalModifier(poseStack, stack, panelX, panelY,mouseX,mouseY);
-    }
-
-    // Name at top-left of the right panel
-    private void renderCompanionName(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
-        String name = CompanionItem.getPetName(stack);
-        if (name == null || name.isEmpty()) name = "Companion";
-
-        this.font.draw(poseStack, name, panelX + nameOffX, panelY + nameOffY, 0x404040);
-    }
-
-    // Hearts row + "Ready / Resting / Retired"
-    private void renderCompanionHeartsAndCooldown(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
-        int hearts    = CompanionItem.getCompanionHearts(stack);
-        int maxHearts = CompanionItem.getCompanionMaxHearts(stack);
-        int cooldown  = CompanionItem.getCurrentCooldown(stack);
-
-        RenderSystem.setShaderTexture(0, GUI_ICONS_LOCATION);
-        poseStack.pushPose();
-        poseStack.translate(0, 0, 10);
-
-        int x = panelX + heartsOffX;
-        int y = panelY + heartsOffY;
-
-        for (int i = 0; i < maxHearts; ++i) {
-            GuiComponent.blit(poseStack, x + i * 8, y, 16, 0, 9, 9, 256, 256);
-            if (i < hearts) {
-                GuiComponent.blit(poseStack, x + i * 8, y, 52, 0, 9, 9, 256, 256);
-            }
-        }
-
-        int separatorX = x + maxHearts * 8 + 2;
-        int textX = separatorX + 6;
-        int textY = y + 1;
-
-        Minecraft.getInstance().font.draw(poseStack, "", separatorX, textY, 0x333333);
-
-    }
-
-    private void renderTemporalModifier(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
-
-        // 1) Check if this companion has a temporal modifier
-        Optional<ResourceLocation> temporalOpt = CompanionItem.getTemporalModifier(stack);
-        if (temporalOpt.isEmpty()) {
-            return;
-        }
-
-        ResourceLocation temporalId = temporalOpt.get();
-
-        // 2) Get VH modifier info (name, color, etc.)
-        Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(temporalId);
-        if (modifierOpt.isEmpty()) {
-            return;
-        }
-
-        VaultModifier<?> modifier = modifierOpt.get();
-
-        // 3) Our texture path:
-        // assets/vending_companions/textures/gui/temporal_modifiers/<path>.png
-        ResourceLocation tex = new ResourceLocation(
-                VendingCompanions.MOD_ID,
-                "textures/gui/temporal_modifiers/" + temporalId.getPath() + ".png"
-        );
-
-        int iconX = panelX + temporalIconOffX;
-        int iconY = panelY + temporalIconOffY;
-
-        int size  = 16;
-        int scale = 2;           // draw 32x32 like VH
-        int drawW = size * scale;
-        int drawH = size * scale;
-
-        // --- draw the icon ---
-        poseStack.pushPose();
-        poseStack.translate(0, 0, 200);
-
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, tex);
-
-        GuiComponent.blit(
-                poseStack,
-                iconX, iconY,
-                0, 0,
-                drawW, drawH,
-                drawW, drawH
-        );
-
-        poseStack.popPose();
-
-        // --- hover tooltip like VH ---
-        if (mouseX >= iconX && mouseX <= iconX + drawW &&
-                mouseY >= iconY && mouseY <= iconY + drawH) {
-
-            List<Component> tooltip = new ArrayList<>();
-
-            // line 1: modifier name in its display color
-            tooltip.add(new TextComponent(modifier.getDisplayName())
-                    .withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
-
-            // line 2: Duration
-            int durationTicks = CompanionItem.getTemporalDuration(stack);
-            // VH stores in ticks*? – UIHelper.formatTimeString handles converting to mm:ss
-            String durationStr = "Duration: " + UIHelper.formatTimeString(durationTicks);
-            tooltip.add(new TextComponent(durationStr).withStyle(ChatFormatting.WHITE));
-
-            // use vanilla tooltip rendering (background & border)
-            this.renderComponentTooltip(poseStack, tooltip, mouseX, mouseY);
-        }
-    }
-
-
-    // XP bar + level number
-    private void renderCompanionXpBar(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
-        int level = CompanionItem.getCompanionLevel(stack);
-        int xp    = CompanionItem.getCompanionXP(stack);
-        int xpReq = Math.max(1, CompanionItem.getXPRequiredForNextLevel(stack));
-        float progress = (float) xp / (float) xpReq;
-
-        int barX = panelX + xpOffX;
-        int barY = panelY + xpOffY;
-
-        // 1) Draw full background
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
-        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, XP_BAR_TEX);
-
-        GuiComponent.blit(
-                poseStack,
-                barX, barY,
-                0, 0,                    // u, v
-                XP_BAR_WIDTH, XP_BAR_HEIGHT,
-                XP_BAR_WIDTH, XP_BAR_HEIGHT  // full texture size
-        );
-
-        // 2) Draw the filled portion, cropped only in width
-        int filledWidth = (int) (progress * XP_BAR_WIDTH);
-        if (filledWidth > 0) {
-            RenderSystem.setShaderTexture(0, XP_BAR_FILL_TEX);
-            GuiComponent.blit(
-                    poseStack,
-                    barX, barY,
-                    0, 0,                    // u, v
-                    filledWidth, XP_BAR_HEIGHT,
-                    XP_BAR_WIDTH, XP_BAR_HEIGHT
-            );
-        }
-
-        // 3) Level number above the bar
-        float scale =1.5f;
-        String levelStr = String.valueOf(level);
-
-
-        int textWidth = (int)(this.font.width(levelStr) * scale);
-        int textX = (barX + (XP_BAR_WIDTH - this.font.width(levelStr)) / 2)-1;
-        int textY = barY -2;
-        poseStack.pushPose();
-        poseStack.translate(textX, textY, 0);
-        poseStack.scale(scale, scale, 1.0f);
-        this.font.draw(poseStack, levelStr, -1,  0, 0xFF000000);
-        this.font.draw(poseStack, levelStr,  1,  0, 0xFF000000);
-        this.font.draw(poseStack, levelStr,  0, -1, 0xFF000000);
-        this.font.draw(poseStack, levelStr,  0,  1, 0xFF000000);
-        this.font.draw(poseStack, levelStr, 0, 0, 0xFFF0B100);
-        poseStack.popPose();
-    }
-
-
-
-    // Right-side stats: "X vaults", "Y days", "Ready"
-    // Right-side stats: "X vaults", "Y days", "Ready" + temporal modifier
-    private void renderCompanionStats(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
-        int sx = panelX + statsOffX;
-        int sy = panelY + statsOffY;
-
-        // --- base stats (same as before) ---
-        int vaultRuns = CompanionItem.getVaultRuns(stack);
-
-        long days = 0;
-        try {
-            java.time.LocalDate date =
-                    java.time.LocalDate.parse(CompanionItem.getHatchedDate(stack));
-            days = java.time.temporal.ChronoUnit.DAYS.between(date, java.time.LocalDate.now());
-        } catch (Exception ignored) {}
-
-        int hearts   = CompanionItem.getCompanionHearts(stack);
-        int cooldown = CompanionItem.getCurrentCooldown(stack);
-
-        String status;
-        if (hearts <= 0) {
-            status = "Retired";
-        } else if (cooldown <= 0) {
-            status = "Ready";
-        } else {
-            status = iskallia.vault.client.gui.helper.UIHelper.formatTimeString((long) cooldown * 20L);
-        }
-
-
-        // draw the three standard lines
-        this.font.draw(poseStack, vaultRuns + " vaults", sx, sy,      0x404040);
-        this.font.draw(poseStack, days      + " days",   sx, sy + 12, 0x404040);
-        this.font.draw(poseStack, status,                sx, sy + 24, 0x404040);
-
-    }
-
-
-
-    @Nullable
-    private LivingEntity getOrCreateCompanionEntity(ItemStack stack) {
-        if (stack.isEmpty()) return null;
-
-        UUID uuid = CompanionItem.getCompanionUUID(stack);
-        if (uuid == null) {
-            return null;
-        }
-
-        // cached?
-        LivingEntity cached = CACHED_COMPANIONS.getIfPresent(uuid);
-        if (cached != null) {
-            return cached;
-        }
-
-        ClientLevel level = Minecraft.getInstance().level;
-        if (level == null) {
-            return null;
-        }
-
-        CompanionSeries series = CompanionItem.getPetSeries(stack);
-        String type = CompanionItem.getPetType(stack);
-
-        EntityType<PetEntity> entityType;
-        if (series == CompanionSeries.PET) {
-            entityType = PetHelper.getVariant(type)
-                    .map(PetHelper.PetVariant::entityType)
-                    .orElse(ModEntities.PET);
-        } else {
-            entityType = ModEntities.PET;
-        }
-
-        PetEntity pet = entityType.create(level);
-        if (pet == null) {
-            return null;
-        }
-
-        // Apply variant traits / data similar to VH
-        if (series == CompanionSeries.PET) {
-            PetHelper.getVariant(type).ifPresent(variant -> {
-                if (variant.traits() != null) {
-                    variant.traits().apply(pet);
-                }
-            });
-        } else {
-            pet.setCompanionData(stack);
-        }
-
-        // vanilla spawn data
-        CompoundTag spawnData = CompanionItem.getSpawnData(stack);
-        if (spawnData != null) {
-            pet.setVanillaEntityData(spawnData);
-        }
-
-        // particle trails / colours
-        List<Integer> cols = CompanionItem.getAllCosmeticColours(stack);
-        List<CompanionParticleTrailItem.TrailType> types = CompanionItem.getAllCosmeticTrailTypes(stack);
-        List<Integer> validCols = new ArrayList<>();
-        List<CompanionParticleTrailItem.TrailType> validTypes = new ArrayList<>();
-
-        for (int i = 0; i < cols.size(); ++i) {
-            if (i < types.size() && cols.get(i) != -1) {
-                validCols.add(cols.get(i));
-                validTypes.add(types.get(i));
-            }
-        }
-
-        pet.setParticleColours(validCols);
-        pet.setParticleTrailTypes(validTypes);
-
-        CompanionPetManager.applySkinsToEntity(pet, stack);
-
-        CACHED_COMPANIONS.put(uuid, pet);
-        return pet;
-    }
-
-    private void renderCompanionPreviewEntity(PoseStack poseStack, int mouseX, int mouseY) {
-        // No companions? nothing to draw
-        if (this.menu.getCompanions().isEmpty()) {
-            return;
-        }
-
-        if (selectedIndex < 0 || selectedIndex >= this.menu.getCompanions().size()) {
-            selectedIndex = 0;
-        }
-
-        ItemStack stack = this.menu.getCompanion(selectedIndex);
-        if (stack.isEmpty()) {
-            return;
-        }
-
-        LivingEntity entity = getOrCreateCompanionEntity(stack);
-        if (entity == null) {
-            return;
-        }
-
-        // ---- position inside your black preview box ----
-        // center of the box
-        int centerX = detailsX + previewOffX + previewWidth  / 2;
-        // a bit above the bottom edge so the feet aren't cut off
-        int centerY = detailsY + previewOffY + previewHeight - 8 -10;
-
-        // vanilla uses the *difference* between the model position and mouse pos
-        float relMouseX = (float) centerX - mouseX;
-        float relMouseY = (float) centerY - mouseY;
-
-        // scale/zoom – you already have a knob for this
-        int scale = companionRenderSize;
-
-        renderEntityLikeInventory(centerX, centerY, scale, relMouseX, relMouseY, entity);
-    }
-
-    private static void renderEntityLikeInventory(
-            int x, int y, int scale,
-            float mouseX, float mouseY,
-            LivingEntity entity
-    ) {
-        float rotX = (float) Math.atan(mouseX / 40.0F);
-        float rotY = (float) Math.atan(mouseY / 40.0F);
-
-        PoseStack mvStack = RenderSystem.getModelViewStack();
-        mvStack.pushPose();
-        mvStack.translate(x, y, 1050.0D);
-        mvStack.scale(1.0F, 1.0F, -1.0F);
-        RenderSystem.applyModelViewMatrix();
-
-        PoseStack modelStack = new PoseStack();
-        modelStack.translate(0.0D, 0.0D, 1000.0D);
-        modelStack.scale(scale, scale, scale);
-
-        Quaternion zRot = Vector3f.ZP.rotationDegrees(180.0F);
-        Quaternion xRot = Vector3f.XP.rotationDegrees(rotY * 20.0F);
-        zRot.mul(xRot);
-        modelStack.mulPose(zRot);
-
-        // save original rotations
-        float bodyRotY    = entity.yBodyRot;
-        float yRot        = entity.getYRot();
-        float xRotOld     = entity.getXRot();
-        float headRotY0   = entity.yHeadRotO;
-        float headRotY    = entity.yHeadRot;
-
-        // apply mouse-based rotation just like the player preview
-        entity.yBodyRot = 180.0F + rotX * 20.0F;
-        entity.setYRot(180.0F + rotX * 40.0F);
-        entity.setXRot(-rotY * 20.0F);
-        entity.yHeadRot = entity.getYRot();
-        entity.yHeadRotO = entity.getYRot();
-
-        Lighting.setupForEntityInInventory();
-        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
-        xRot.conj();
-        dispatcher.overrideCameraOrientation(xRot);
-        dispatcher.setRenderShadow(false);
-
-        MultiBufferSource.BufferSource buffer = Minecraft.getInstance().renderBuffers().bufferSource();
-        RenderSystem.runAsFancy(() -> dispatcher.render(
-                entity,
-                0.0D, 0.0D, 0.0D,
-                0.0F,
-                1.0F,
-                modelStack,
-                buffer,
-                15728880
-        ));
-        buffer.endBatch();
-
-        dispatcher.setRenderShadow(true);
-
-        // restore original rotations
-        entity.yBodyRot = bodyRotY;
-        entity.setYRot(yRot);
-        entity.setXRot(xRotOld);
-        entity.yHeadRotO = headRotY0;
-        entity.yHeadRot  = headRotY;
-
-        mvStack.popPose();
-        RenderSystem.applyModelViewMatrix();
-        Lighting.setupFor3DItems();
-    }
-
-    private void onChangeModelClicked() {
-        Minecraft mc = Minecraft.getInstance();
-        try {
-            List<ItemStack> companions = this.menu.getCompanions();
-            if (companions == null || companions.isEmpty()) {
-                return;
-            }
-
-            // safety clamp
-            if (selectedIndex < 0 || selectedIndex >= companions.size()) {
-                selectedIndex = 0;
-            }
-
-            ItemStack stack = companions.get(selectedIndex);
-            if (stack.isEmpty()) return;
-
-            CompanionSeries series = CompanionItem.getPetSeries(stack);
-            String currentType = CompanionItem.getPetType(stack);
-
-            if (currentType == null || currentType.isEmpty()) {
-                return; // nothing we can do
-            }
-
-            String nextType = null;
-
-            // -------- PET series: cycle through unlocked variants --------
-            if (series == CompanionSeries.PET) {
-                PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
-                if (modelType == null) {
-                    return;
-                }
-
-                if (mc.player == null) return;
-
-                List<PetHelper.PetVariant> variants = modelType.getVariants(mc.player.getUUID());
-                if (variants == null || variants.isEmpty()) {
-                    return;
-                }
-
-                // find current
-                int currentIndex = 0;
-                for (int i = 0; i < variants.size(); i++) {
-                    if (variants.get(i).type().equalsIgnoreCase(currentType)) {
-                        currentIndex = i;
-                        break;
-                    }
-                }
-
-                // pick next variant (wrap)
-                int nextIndex = (currentIndex + 1) % variants.size();
-                PetHelper.PetVariant nextVariant = variants.get(nextIndex);
-                nextType = nextVariant.type();
-
-                // if name still matches old variant default name, update to new displayName
-                String currentName = CompanionItem.getPetName(stack);
-                String previousDisplayName = variants.get(currentIndex).displayName();
-                if (currentName == null || currentName.equalsIgnoreCase(previousDisplayName)) {
-                    CompanionItem.setPetName(stack, nextVariant.displayName());
-                }
-            }
-            // -------- LEGEND series: cycle hard-coded forms like VH --------
-            else if (series == CompanionSeries.LEGEND) {
-                String[] possible = new String[] { "eternal", "giant", "minion", "antlion" };
-
-                int idx = 0;
-                for (int i = 0; i < possible.length; i++) {
-                    if (possible[i].equalsIgnoreCase(currentType)) {
-                        idx = i;
-                        break;
-                    }
-                }
-
-                nextType = possible[(idx + 1) % possible.length];
-            }
-
-            // nothing to change
-            if (nextType == null || nextType.equalsIgnoreCase(currentType)) {
-                return;
-            }
-
-            // ---- apply change ONLY to the stack; no list.set(...) ----
-            CompanionItem.setPetType(stack, nextType);
-
-            // invalidate cached entity so preview updates
-            UUID uuid = CompanionItem.getCompanionUUID(stack);
-            if (uuid != null) {
-                CACHED_COMPANIONS.invalidate(uuid);
-            }
-
-            // debug toast so we know it ran
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        new TextComponent("Changed model to: " + nextType),
-                        true
-                );
-            }
-
-            BlockPos pos = this.menu.getBlockPos();
-            int index = this.selectedIndex;
-            String variantType = nextType;
-
-            ModNetworks.CHANNEL.sendToServer(
-                    new ChangeCompanionVariantC2SPacket(pos, index, variantType)
-            );
-
-        } catch (Exception e) {
-            // prevent hard crash and tell us what went wrong
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        new TextComponent("Error changing model: " + e.getClass().getSimpleName()),
-                        true
-                );
-            }
-        }
-    }
-
-    private void toggleVariantMenu() {
-        this.variantsOpen = !this.variantsOpen;
-    }
-
     @Override
     protected void containerTick() {
         super.containerTick();
@@ -1075,329 +326,158 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         updateVariantButtonPositions();
     }
 
+    // -------------------------------------------------------------------
+    // Rendering
+    // -------------------------------------------------------------------
 
-    private void rebuildVariantButtons() {
-        for (Button b : variantButtons) this.removeWidget(b);
-        variantButtons.clear();
-
-        List<ItemStack> companions = this.menu.getCompanions();
-        if (companions == null || companions.isEmpty()) return;
-
-        if (selectedIndex < 0 || selectedIndex >= companions.size()) selectedIndex = 0;
-
-        ItemStack baseStack = this.menu.getCompanion(selectedIndex);
-        if (baseStack.isEmpty()) return;
-
-        CompanionSeries series = CompanionItem.getPetSeries(baseStack);
-        String currentType = CompanionItem.getPetType(baseStack);
-        if (currentType == null || currentType.isEmpty()) return;
-
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-
-        // base anchor (right side of details panel)
-        int baseX = detailsX + detailsWidth + 2;
-        int baseY = detailsY + 5;
-
-        int btnWidth = 18;
-        int btnHeight = 18;
-
-        if (series == CompanionSeries.PET) {
-            PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
-            if (modelType == null) return;
-
-            List<PetHelper.PetVariant> variants = modelType.getVariants(mc.player.getUUID());
-            for (int i = 0; i < variants.size(); i++) {
-                PetHelper.PetVariant v = variants.get(i);
-                String type = v.type();
-                if (type == null || type.isEmpty()) continue;
-
-                int y = baseY + i * 20;
-
-                // IMPORTANT: make an icon stack that looks like this variant
-                ItemStack icon = baseStack.copy();
-                CompanionItem.setPetType(icon, type);
-
-                Component tip = new TextComponent(v.displayName());
-
-                Button b = new VariantItemButton(
-                        baseX, y, 18, 18,
-                        icon,
-                        tip,
-                        btn -> changeVariant(type)
-                );
-
-                variantButtons.add(b);
-                this.addRenderableWidget(b);
-            }
-        } else if (series == CompanionSeries.LEGEND) {
-            String[] types = new String[] { "eternal", "giant", "minion", "antlion" };
-
-            for (int i = 0; i < types.length; i++) {
-                String type = types[i];
-                int y = baseY + i * 20;
-
-                String labelText = type.substring(0, 1).toUpperCase();   // G / M
-                Component tooltip = new TextComponent(
-                        type.substring(0, 1).toUpperCase() + type.substring(1)
-                ); // Giant / Minion / etc.
-
-                Button b = new VariantTextButton(
-                        baseX,
-                        y,
-                        18,
-                        18,
-                        new TextComponent(labelText),
-                        tooltip,
-                        btn -> changeVariant(type)
-                );
-
-                variantButtons.add(b);
-                this.addRenderableWidget(b);
-            }
-        } else {
-            return;
-        }
-
-        updateVariantButtonPositions();
-    }
-
-
-    private void updateVariantButtonPositions() {
-        if (variantButtons.isEmpty()) return;
-
-        int slideDistance = 24; // how far to the right they start when closed
-
-        // final aligned position on the RIGHT of the details panel
-        int baseX = detailsX + detailsWidth + 2;
-        int baseY = detailsY + 15;
-
-        float perButtonDelay = 0.07f; // delay between buttons for the wave
-
-        for (int i = 0; i < variantButtons.size(); i++) {
-            Button b = variantButtons.get(i);
-
-            int y = baseY + i * 20;
-
-            // global animation: 0 -> 1
-            // each button starts later by i * perButtonDelay
-            float delay = i * perButtonDelay;
-            float t;
-
-            if (variantsAnim <= delay) {
-                t = 0.0f;
-            } else {
-                t = (variantsAnim - delay) / (1.0f - delay);
-            }
-
-            t = Mth.clamp(t, 0.0f, 1.0f); // per-button eased progress
-
-            // t = 0  -> fully closed (pushed right)
-            // t = 1  -> fully open (aligned at baseX)
-            int offset = (int) ((1.0f - t) * slideDistance);
-
-            b.x = baseX - offset;  // slide in from the right towards baseX
-            b.y = y;
-
-            // keep them clickable while animating open/closed
-            b.visible = variantsAnim > 0.02f;
-        }
-    }
-
-
-
-
-
-    private void changeVariant(String variantType) {
-        Minecraft mc = Minecraft.getInstance();
-        try {
-            List<ItemStack> companions = this.menu.getCompanions();
-            if (companions == null || companions.isEmpty()) return;
-
-            if (selectedIndex < 0 || selectedIndex >= companions.size()) {
-                selectedIndex = 0;
-            }
-
-            ItemStack stack = this.menu.getCompanion(selectedIndex);
-            if (stack.isEmpty()) return;
-
-            CompanionSeries series = CompanionItem.getPetSeries(stack);
-            String currentType = CompanionItem.getPetType(stack);
-
-            if (variantType == null || variantType.isEmpty()) return;
-            if (currentType != null && variantType.equalsIgnoreCase(currentType)) return;
-
-            // PET: adjust name based on default display names
-            if (series == CompanionSeries.PET) {
-                PetHelper.PetVariant newVariant = PetHelper.getVariant(variantType).orElse(null);
-                if (newVariant == null) return;
-
-                if (currentType != null) {
-                    PetHelper.PetVariant previousVariant = PetHelper.getVariant(currentType).orElse(null);
-                    if (previousVariant != null) {
-                        String currentName = CompanionItem.getPetName(stack);
-                        String prevDisplay = previousVariant.displayName();
-                        if (currentName == null || currentName.equalsIgnoreCase(prevDisplay)) {
-                            CompanionItem.setPetName(stack, newVariant.displayName());
-                        }
-                    }
-                }
-            }
-            // LEGEND: we just trust variantType is valid
-
-            // apply change locally
-            CompanionItem.setPetType(stack, variantType);
-
-            // invalidate cached entity so preview updates
-            UUID uuid = CompanionItem.getCompanionUUID(stack);
-            if (uuid != null) {
-                CACHED_COMPANIONS.invalidate(uuid);
-            }
-
-            // debug toast
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        new TextComponent("Changed model to: " + variantType),
-                        true
-                );
-            }
-
-            // send to server
-            ModNetworks.CHANNEL.sendToServer(
-                    new ChangeCompanionVariantC2SPacket(
-                            this.menu.getBlockPos(),
-                            this.selectedIndex,
-                            variantType
-                    )
-            );
-
-        } catch (Exception e) {
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        new TextComponent("Error changing model: " + e.getClass().getSimpleName()),
-                        true
-                );
-            }
-        }
-    }
-
-    private void renderVariantOverlay(PoseStack poseStack) {
-        // Screen-space overlay placement
-        int overlayX = detailsX + detailsWidth - 22;
-        int overlayY = detailsY + 15;
-        int overlayWidth  = 27;
-        int overlayHeight = 78;
-
-        // Texture-space placement (corresponds to the same region in your GUI texture)
-        int panelTexU = 175; // details panel left in texture
-        int panelTexV = 4;   // details panel top in texture
-
-        int u = panelTexU + (detailsWidth - 22); // mirror overlayX relative to panel
-        int v = panelTexV + 15;
-
-        poseStack.pushPose();
-        poseStack.translate(0, 0, 200); // draw over widgets
-
+    @Override
+    protected void renderBg(PoseStack poseStack, float partialTick, int mouseX, int mouseY) {
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
         RenderSystem.setShaderTexture(0, TEXTURE);
 
-        this.blit(
-                poseStack,
-                overlayX,
-                overlayY,
-                u,
-                v,
-                overlayWidth,
-                overlayHeight,
-                TEX_WIDTH,
-                TEX_HEIGHT
-        );
+        int x = (this.width - this.imageWidth) / 2;
+        int y = (this.height - this.imageHeight) / 2;
 
-        poseStack.popPose();
+        this.blit(poseStack, x - 65, y - 10, 0, 0, this.imageWidth, this.imageHeight, TEX_WIDTH, TEX_HEIGHT);
+
+        // --- black preview background behind companion ---
+        int boxX1 = detailsX + previewOffX;
+        int boxY1 = detailsY + previewOffY;
+        int boxX2 = boxX1 + previewWidth;
+        int boxY2 = boxY1 + previewHeight;
+
+        // ARGB: 0xFF000000 = solid black
+        fill(poseStack, boxX1, boxY1, boxX2, boxY2, 0xFF000000);
+
+        // --- relic slot backgrounds on right panel ---
+        for (int i = 0; i < CompanionVendingMachineMenu.RELIC_SLOT_COUNT; i++) {
+            int slotX = this.leftPos + relicSlotOffX;
+            int slotY = this.topPos  + relicSlotOffY + i * 18;
+
+            Slot slot = this.menu.slots.get(i);
+
+            boolean unlocked = true;
+            if (slot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot) {
+                unlocked = relicSlot.isUnlocked();
+            }
+
+            boolean filled = unlocked && slot.hasItem();
+
+            ResourceLocation tex;
+            if (!unlocked) {
+                tex = RELIC_SLOT_BG_LOCKED;
+            } else if (filled) {
+                tex = RELIC_SLOT_BG_FILLED;
+            } else {
+                tex = RELIC_SLOT_BG_UNLOCKED;
+            }
+
+            RenderSystem.setShaderTexture(0, tex);
+            this.blit(poseStack, slotX, slotY, 0, 0, 18, 18, 18, 18);
+        }
+
+        // --- trail slot backgrounds on right panel ---
+        int firstTrailIndex = CompanionVendingMachineMenu.RELIC_SLOT_COUNT; // 4
+        for (int i = 0; i < CompanionVendingMachineMenu.TRAIL_SLOT_COUNT; i++) {
+            int slotX = this.leftPos + trailSlotOffX;
+            int slotY = this.topPos  + trailSlotOffY + i * 18;
+
+            Slot slot = this.menu.slots.get(firstTrailIndex + i);
+            boolean unlocked = true;
+
+            if (slot instanceof CompanionVendingMachineMenu.TrailSlot trailSlot) {
+                unlocked = trailSlot.isUnlocked();
+            }
+
+            ResourceLocation tex = unlocked ? TRAIL_SLOT_BG_UNLOCKED : TRAIL_SLOT_BG_LOCKED;
+            RenderSystem.setShaderTexture(0, tex);
+
+            this.blit(poseStack, slotX - 1, slotY - 1, 0, 0, 18, 18, 18, 18);
+        }
+
+        // --- draw scrollbar using your PNG ---
+        if (maxScroll > 0) {
+            RenderSystem.setShaderTexture(0, SCROLLBAR_TEX);
+
+            int barX = listX + listWidth + 4;
+            int barY = listY;
+            int barWidth = 8;
+            int barHeight = listHeight;
+
+            int knobHeight = 12;
+            float t = (float) scrollOffset / (float) maxScroll;
+            int knobY = barY + (int) ((barHeight - knobHeight) * t);
+
+            this.blit(poseStack, barX, knobY, 0, 0, barWidth, knobHeight);
+        }
     }
 
-    private int findNextNonEmptyCompanionIndex() {
-        List<ItemStack> comps = this.menu.getCompanions();
-        if (comps == null || comps.isEmpty()) {
-            return -1; // nothing left
-        }
+    @Override
+    public void render(PoseStack poseStack, int mouseX, int mouseY, float delta) {
+        this.renderBackground(poseStack);
+        super.render(poseStack, mouseX, mouseY, delta);
 
-        // 1) try from current index forward
-        for (int i = this.selectedIndex; i < comps.size(); i++) {
-            if (!comps.get(i).isEmpty()) {
-                return i;
+        // quick equip tooltips
+        for (CompanionDisplayButton b : companionButtons) {
+            if (b.quickEquipButton != null && b.quickEquipButton.isMouseOver(mouseX, mouseY)) {
+                Component tip = b.quickEquipButton.getTooltip();
+                if (tip != null) {
+                    this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                    break;
+                }
             }
         }
 
-        // 2) then backwards
-        for (int i = this.selectedIndex - 1; i >= 0; i--) {
-            if (!comps.get(i).isEmpty()) {
-                return i;
+        // change-model tooltip
+        if (changeModelButton != null && changeModelButton.isMouseOverButton(mouseX, mouseY)) {
+            renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
+        }
+
+        // variant button tooltips (PET + LEGEND)
+        if (variantsAnim >= 1) {
+            for (Button b : variantButtons) {
+                if (b == null || !b.visible) continue;
+
+                if (b.isMouseOver(mouseX, mouseY)) {
+                    if (b instanceof VariantItemButton vib) {
+                        Component tip = vib.getTooltip();
+                        if (tip != null && !tip.getString().isEmpty()) {
+                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                        }
+                        break;
+                    }
+
+                    if (b instanceof VariantTextButton vtb) {
+                        Component tip = vtb.getTooltip();
+                        if (tip != null && !tip.getString().isEmpty()) {
+                            this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                        }
+                        break;
+                    }
+
+                    // fallback
+                    Component msg = b.getMessage();
+                    if (msg != null && !msg.getString().isEmpty()) {
+                        this.renderTooltip(poseStack, msg, mouseX, mouseY);
+                    }
+                    break;
+                }
             }
         }
 
-        // 3) no non-empty entries at all
-        return -1;
+        renderVariantOverlay(poseStack);
+        renderCompanionDetails(poseStack, mouseX, mouseY);
+        renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
+
+        // vanilla slot/tooltips etc.
+        this.renderTooltip(poseStack, mouseX, mouseY);
     }
 
-    private void onEquipClicked() {
-        Minecraft mc = Minecraft.getInstance();
-
-        // basic client-side sanity
-        List<ItemStack> companions = this.menu.getCompanions();
-        if (companions == null || companions.isEmpty()) {
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        new TextComponent("No companions to equip."),
-                        true
-                );
-            }
-            return;
-        }
-
-        if (selectedIndex < 0 || selectedIndex >= companions.size()) {
-            selectedIndex = 0;
-        }
-
-        ItemStack stack = this.menu.getCompanion(selectedIndex);
-        if (stack.isEmpty()) {
-            if (mc.player != null) {
-                mc.player.displayClientMessage(
-                        new TextComponent("Selected companion is empty."),
-                        true
-                );
-            }
-            return;
-        }
-
-        BlockPos pos = this.menu.getBlockPos();
-
-        // 1) send to server
-        ModNetworks.CHANNEL.sendToServer(
-                new EquipCompanionC2SPacket(pos, selectedIndex)
-        );
-
-        // 2) mirror removal on client so the button disappears
-        this.menu.removeCompanionClient(selectedIndex);
-
-        // 3) fix up selectedIndex after the list shrank
-        List<ItemStack> updated = this.menu.getCompanions();
-        if (updated.isEmpty()) {
-            this.selectedIndex = -1; // nothing left
-        } else if (this.selectedIndex >= updated.size()) {
-            this.selectedIndex = updated.size() - 1; // clamp to last
-        }
-
-        // 4) rebuild all buttons / layout
-        this.init();
-
-        if (mc.player != null) {
-            mc.player.displayClientMessage(
-                    new TextComponent("Equipped companion."),
-                    true
-            );
-        }
+    @Override
+    protected void renderLabels(PoseStack poseStack, int mouseX, int mouseY) {
+        this.font.draw(poseStack, this.title, this.titleLabelX, this.titleLabelY, 0x404040);
+        this.font.draw(poseStack, this.playerInventoryTitle, this.inventoryLabelX, this.inventoryLabelY, 0x404040);
     }
 
     @Override
@@ -1464,18 +544,902 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         return tooltip;
     }
 
+    // ------------------- right-panel rendering -------------------
 
+    private void renderCompanionDetails(PoseStack poseStack, int mouseX, int mouseY) {
+        List<ItemStack> companions = this.menu.getCompanions();
+        if (companions.isEmpty()) return;
 
+        // clamp in case the list changed size
+        if (selectedIndex < 0 || selectedIndex >= companions.size()) {
+            selectedIndex = 0;
+        }
+
+        ItemStack stack = this.menu.getCompanion(selectedIndex);
+        if (stack.isEmpty()) return;
+
+        int panelX = detailsX;
+        int panelY = detailsY;
+
+        renderCompanionName(poseStack, stack, panelX, panelY);
+        renderCompanionHeartsAndCooldown(poseStack, stack, panelX, panelY);
+        renderCompanionXpBar(poseStack, stack, panelX, panelY);
+        renderCompanionStats(poseStack, stack, panelX, panelY);
+        renderTemporalModifier(poseStack, stack, panelX, panelY, mouseX, mouseY);
+    }
+
+    private void renderCompanionName(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
+        String name = CompanionItem.getPetName(stack);
+        if (name == null || name.isEmpty()) name = "Companion";
+        this.font.draw(poseStack, name, panelX + nameOffX, panelY + nameOffY, 0x404040);
+    }
+
+    private void renderCompanionHeartsAndCooldown(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
+        int hearts    = CompanionItem.getCompanionHearts(stack);
+        int maxHearts = CompanionItem.getCompanionMaxHearts(stack);
+        int cooldown  = CompanionItem.getCurrentCooldown(stack);
+
+        RenderSystem.setShaderTexture(0, GUI_ICONS_LOCATION);
+        poseStack.pushPose();
+        poseStack.translate(0, 0, 10);
+
+        int x = panelX + heartsOffX;
+        int y = panelY + heartsOffY;
+
+        for (int i = 0; i < maxHearts; ++i) {
+            GuiComponent.blit(poseStack, x + i * 8, y, 16, 0, 9, 9, 256, 256);
+            if (i < hearts) {
+                GuiComponent.blit(poseStack, x + i * 8, y, 52, 0, 9, 9, 256, 256);
+            }
+        }
+
+        int separatorX = x + maxHearts * 8 + 2;
+        int textX = separatorX + 6;
+        int textY = y + 1;
+
+        Minecraft.getInstance().font.draw(poseStack, "", separatorX, textY, 0x333333);
+    }
+
+    private void renderTemporalModifier(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
+        Optional<ResourceLocation> temporalOpt = CompanionItem.getTemporalModifier(stack);
+        if (temporalOpt.isEmpty()) return;
+
+        ResourceLocation temporalId = temporalOpt.get();
+
+        Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(temporalId);
+        if (modifierOpt.isEmpty()) return;
+
+        VaultModifier<?> modifier = modifierOpt.get();
+
+        ResourceLocation tex = new ResourceLocation(
+                VendingCompanions.MOD_ID,
+                "textures/gui/temporal_modifiers/" + temporalId.getPath() + ".png"
+        );
+
+        int iconX = panelX + temporalIconOffX;
+        int iconY = panelY + temporalIconOffY;
+
+        int size  = 16;
+        int scale = 2;           // draw 32x32 like VH
+        int drawW = size * scale;
+        int drawH = size * scale;
+
+        // draw icon
+        poseStack.pushPose();
+        poseStack.translate(0, 0, 200);
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShaderTexture(0, tex);
+
+        GuiComponent.blit(
+                poseStack,
+                iconX, iconY,
+                0, 0,
+                drawW, drawH,
+                drawW, drawH
+        );
+
+        poseStack.popPose();
+
+        // hover tooltip
+        if (mouseX >= iconX && mouseX <= iconX + drawW &&
+                mouseY >= iconY && mouseY <= iconY + drawH) {
+
+            List<Component> tooltip = new ArrayList<>();
+
+            tooltip.add(new TextComponent(modifier.getDisplayName())
+                    .withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
+
+            int durationTicks = CompanionItem.getTemporalDuration(stack);
+            String durationStr = "Duration: " + UIHelper.formatTimeString(durationTicks);
+            tooltip.add(new TextComponent(durationStr).withStyle(ChatFormatting.WHITE));
+
+            this.renderComponentTooltip(poseStack, tooltip, mouseX, mouseY);
+        }
+    }
+
+    private void renderCompanionXpBar(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
+        int level = CompanionItem.getCompanionLevel(stack);
+        int xp    = CompanionItem.getCompanionXP(stack);
+        int xpReq = Math.max(1, CompanionItem.getXPRequiredForNextLevel(stack));
+        float progress = (float) xp / (float) xpReq;
+
+        int barX = panelX + xpOffX;
+        int barY = panelY + xpOffY;
+
+        // background
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShaderTexture(0, XP_BAR_TEX);
+
+        GuiComponent.blit(
+                poseStack,
+                barX, barY,
+                0, 0,
+                XP_BAR_WIDTH, XP_BAR_HEIGHT,
+                XP_BAR_WIDTH, XP_BAR_HEIGHT
+        );
+
+        // fill
+        int filledWidth = (int) (progress * XP_BAR_WIDTH);
+        if (filledWidth > 0) {
+            RenderSystem.setShaderTexture(0, XP_BAR_FILL_TEX);
+            GuiComponent.blit(
+                    poseStack,
+                    barX, barY,
+                    0, 0,
+                    filledWidth, XP_BAR_HEIGHT,
+                    XP_BAR_WIDTH, XP_BAR_HEIGHT
+            );
+        }
+
+        // level number
+        float scale = 1.5f;
+        String levelStr = String.valueOf(level);
+
+        int textWidth = (int)(this.font.width(levelStr) * scale);
+        int textX = (barX + (XP_BAR_WIDTH - this.font.width(levelStr)) / 2) - 1;
+        int textY = barY - 2;
+
+        poseStack.pushPose();
+        poseStack.translate(textX, textY, 0);
+        poseStack.scale(scale, scale, 1.0f);
+        this.font.draw(poseStack, levelStr, -1,  0, 0xFF000000);
+        this.font.draw(poseStack, levelStr,  1,  0, 0xFF000000);
+        this.font.draw(poseStack, levelStr,  0, -1, 0xFF000000);
+        this.font.draw(poseStack, levelStr,  0,  1, 0xFF000000);
+        this.font.draw(poseStack, levelStr, 0, 0, 0xFFF0B100);
+        poseStack.popPose();
+    }
+
+    private void renderCompanionStats(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
+        int sx = panelX + statsOffX;
+        int sy = panelY + statsOffY;
+
+        int vaultRuns = CompanionItem.getVaultRuns(stack);
+
+        long days = 0;
+        try {
+            java.time.LocalDate date =
+                    java.time.LocalDate.parse(CompanionItem.getHatchedDate(stack));
+            days = java.time.temporal.ChronoUnit.DAYS.between(date, java.time.LocalDate.now());
+        } catch (Exception ignored) {}
+
+        int hearts   = CompanionItem.getCompanionHearts(stack);
+        int cooldown = CompanionItem.getCurrentCooldown(stack);
+
+        String status;
+        if (hearts <= 0) {
+            status = "Retired";
+        } else if (cooldown <= 0) {
+            status = "Ready";
+        } else {
+            status = iskallia.vault.client.gui.helper.UIHelper.formatTimeString((long) cooldown * 20L);
+        }
+
+        this.font.draw(poseStack, vaultRuns + " vaults", sx, sy,      0x404040);
+        this.font.draw(poseStack, days      + " days",   sx, sy + 12, 0x404040);
+        this.font.draw(poseStack, status,                sx, sy + 24, 0x404040);
+    }
+
+    private void renderVariantOverlay(PoseStack poseStack) {
+        // Screen-space overlay placement
+        int overlayX = detailsX + detailsWidth - 22;
+        int overlayY = detailsY + 15;
+        int overlayWidth  = 27;
+        int overlayHeight = 78;
+
+        // Texture-space placement (corresponds to the same region in your GUI texture)
+        int panelTexU = 175; // details panel left in texture
+        int panelTexV = 4;   // details panel top in texture
+
+        int u = panelTexU + (detailsWidth - 22); // mirror overlayX relative to panel
+        int v = panelTexV + 15;
+
+        poseStack.pushPose();
+        poseStack.translate(0, 0, 200); // draw over widgets
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+        RenderSystem.setShaderTexture(0, TEXTURE);
+
+        this.blit(
+                poseStack,
+                overlayX,
+                overlayY,
+                u,
+                v,
+                overlayWidth,
+                overlayHeight,
+                TEX_WIDTH,
+                TEX_HEIGHT
+        );
+
+        poseStack.popPose();
+    }
+
+    // -------------------------------------------------------------------
+    // Entity preview rendering
+    // -------------------------------------------------------------------
+
+    @Nullable
+    private LivingEntity getOrCreateCompanionEntity(ItemStack stack) {
+        if (stack.isEmpty()) return null;
+
+        UUID uuid = CompanionItem.getCompanionUUID(stack);
+        if (uuid == null) return null;
+
+        LivingEntity cached = CACHED_COMPANIONS.getIfPresent(uuid);
+        if (cached != null) return cached;
+
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null) return null;
+
+        CompanionSeries series = CompanionItem.getPetSeries(stack);
+        String type = CompanionItem.getPetType(stack);
+
+        EntityType<PetEntity> entityType;
+        if (series == CompanionSeries.PET) {
+            entityType = PetHelper.getVariant(type)
+                    .map(PetHelper.PetVariant::entityType)
+                    .orElse(ModEntities.PET);
+        } else {
+            entityType = ModEntities.PET;
+        }
+
+        PetEntity pet = entityType.create(level);
+        if (pet == null) return null;
+
+        if (series == CompanionSeries.PET) {
+            PetHelper.getVariant(type).ifPresent(variant -> {
+                if (variant.traits() != null) {
+                    variant.traits().apply(pet);
+                }
+            });
+        } else {
+            pet.setCompanionData(stack);
+        }
+
+        CompoundTag spawnData = CompanionItem.getSpawnData(stack);
+        if (spawnData != null) {
+            pet.setVanillaEntityData(spawnData);
+        }
+
+        List<Integer> cols = CompanionItem.getAllCosmeticColours(stack);
+        List<CompanionParticleTrailItem.TrailType> types = CompanionItem.getAllCosmeticTrailTypes(stack);
+        List<Integer> validCols = new ArrayList<>();
+        List<CompanionParticleTrailItem.TrailType> validTypes = new ArrayList<>();
+
+        for (int i = 0; i < cols.size(); ++i) {
+            if (i < types.size() && cols.get(i) != -1) {
+                validCols.add(cols.get(i));
+                validTypes.add(types.get(i));
+            }
+        }
+
+        pet.setParticleColours(validCols);
+        pet.setParticleTrailTypes(validTypes);
+
+        CompanionPetManager.applySkinsToEntity(pet, stack);
+
+        CACHED_COMPANIONS.put(uuid, pet);
+        return pet;
+    }
+
+    private void renderCompanionPreviewEntity(PoseStack poseStack, int mouseX, int mouseY) {
+        if (this.menu.getCompanions().isEmpty()) return;
+
+        if (selectedIndex < 0 || selectedIndex >= this.menu.getCompanions().size()) {
+            selectedIndex = 0;
+        }
+
+        ItemStack stack = this.menu.getCompanion(selectedIndex);
+        if (stack.isEmpty()) return;
+
+        LivingEntity entity = getOrCreateCompanionEntity(stack);
+        if (entity == null) return;
+
+        int centerX = detailsX + previewOffX + previewWidth  / 2;
+        int centerY = detailsY + previewOffY + previewHeight - 8 - 10;
+
+        float relMouseX = (float) centerX - mouseX;
+        float relMouseY = (float) centerY - mouseY;
+
+        int scale = companionRenderSize;
+
+        renderEntityLikeInventory(centerX, centerY, scale, relMouseX, relMouseY, entity);
+    }
+
+    private static void renderEntityLikeInventory(
+            int x, int y, int scale,
+            float mouseX, float mouseY,
+            LivingEntity entity
+    ) {
+        float rotX = (float) Math.atan(mouseX / 40.0F);
+        float rotY = (float) Math.atan(mouseY / 40.0F);
+
+        PoseStack mvStack = RenderSystem.getModelViewStack();
+        mvStack.pushPose();
+        mvStack.translate(x, y, 1050.0D);
+        mvStack.scale(1.0F, 1.0F, -1.0F);
+        RenderSystem.applyModelViewMatrix();
+
+        PoseStack modelStack = new PoseStack();
+        modelStack.translate(0.0D, 0.0D, 1000.0D);
+        modelStack.scale(scale, scale, scale);
+
+        Quaternion zRot = Vector3f.ZP.rotationDegrees(180.0F);
+        Quaternion xRot = Vector3f.XP.rotationDegrees(rotY * 20.0F);
+        zRot.mul(xRot);
+        modelStack.mulPose(zRot);
+
+        float bodyRotY    = entity.yBodyRot;
+        float yRot        = entity.getYRot();
+        float xRotOld     = entity.getXRot();
+        float headRotY0   = entity.yHeadRotO;
+        float headRotY    = entity.yHeadRot;
+
+        entity.yBodyRot = 180.0F + rotX * 20.0F;
+        entity.setYRot(180.0F + rotX * 40.0F);
+        entity.setXRot(-rotY * 20.0F);
+        entity.yHeadRot = entity.getYRot();
+        entity.yHeadRotO = entity.getYRot();
+
+        Lighting.setupForEntityInInventory();
+        EntityRenderDispatcher dispatcher = Minecraft.getInstance().getEntityRenderDispatcher();
+        xRot.conj();
+        dispatcher.overrideCameraOrientation(xRot);
+        dispatcher.setRenderShadow(false);
+
+        MultiBufferSource.BufferSource buffer = Minecraft.getInstance().renderBuffers().bufferSource();
+        RenderSystem.runAsFancy(() -> dispatcher.render(
+                entity,
+                0.0D, 0.0D, 0.0D,
+                0.0F,
+                1.0F,
+                modelStack,
+                buffer,
+                15728880
+        ));
+        buffer.endBatch();
+
+        dispatcher.setRenderShadow(true);
+
+        entity.yBodyRot = bodyRotY;
+        entity.setYRot(yRot);
+        entity.setXRot(xRotOld);
+        entity.yHeadRotO = headRotY0;
+        entity.yHeadRot  = headRotY;
+
+        mvStack.popPose();
+        RenderSystem.applyModelViewMatrix();
+        Lighting.setupFor3DItems();
+    }
+
+    // -------------------------------------------------------------------
+    // Input handling
+    // -------------------------------------------------------------------
+
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double delta) {
+        boolean overList = mouseX >= listX && mouseX < listX + listWidth &&
+                mouseY >= listY && mouseY < listY + listHeight;
+
+        if (overList) {
+            int maxRows = filteredIndices.size();
+            int maxScrollRows = Math.max(0, maxRows - VISIBLE_ROWS);
+
+            if (maxScrollRows > 0 && delta != 0) {
+                int dir = (int) -Math.signum(delta);
+                scrollRowOffset = Mth.clamp(scrollRowOffset + dir, 0, maxScrollRows);
+
+                rebuildCompanionButtonsOnly();
+                return true;
+            }
+        }
+
+        return super.mouseScrolled(mouseX, mouseY, delta);
+    }
+
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+
+        // --- PREVENT "flicker" when not enough Vault Gold (client prediction) ---
+        if (button == 0 && hasShiftDown() && this.hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relic) {
+            if (relic.isUnlocked() && relic.hasItem()) {
+                int cost = iskallia.vault.init.ModConfigs.COMPANIONS.getRelicRemovalCost();
+
+                boolean hasEnough = false;
+                if (Minecraft.getInstance().player != null) {
+                    var allItems = iskallia.vault.util.InventoryUtil.findAllItems(Minecraft.getInstance().player);
+                    ItemStack currency = new ItemStack(iskallia.vault.init.ModBlocks.VAULT_GOLD, cost);
+                    hasEnough = iskallia.vault.util.CoinDefinition.hasEnoughCurrency(allItems, currency);
+                }
+
+                if (!hasEnough) {
+                    return true;
+                }
+            }
+        }
+
+        // right-click clear search bar
+        if (button == 1 && this.searchBar != null) {
+            EditBox box = this.searchBar.widget();
+            if (box.isMouseOver(mouseX, mouseY)) {
+                this.searchBar.clear();
+                rebuildFilteredList();
+                rebuildCompanionButtonsOnly();
+                return true;
+            }
+        }
+
+        for (CompanionDisplayButton compBtn : companionButtons) {
+            if (compBtn.mouseClicked(mouseX, mouseY, button)) {
+                return true;
+            }
+        }
+
+        return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
+        if (this.searchBar != null) {
+            var box = this.searchBar.widget();
+
+            if (keyCode == 256 && box.isFocused()) { // GLFW_KEY_ESCAPE
+                box.setFocus(false);
+                return true;
+            }
+            if (box.isFocused()) {
+                if (box.keyPressed(keyCode, scanCode, modifiers)) return true;
+                return true; // swallow inventory binds while typing
+            }
+        }
+
+        return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean charTyped(char codePoint, int modifiers) {
+        if (this.searchBar != null) {
+            var box = this.searchBar.widget();
+            if (box.isFocused() && box.charTyped(codePoint, modifiers)) {
+                return true;
+            }
+        }
+        return super.charTyped(codePoint, modifiers);
+    }
+
+    // -------------------------------------------------------------------
+    // Companion selection / equip actions
+    // -------------------------------------------------------------------
+
+    public void setSelectedCompanionIndex(int index) {
+        this.selectedIndex = index;
+
+        // update client immediately
+        this.menu.setSelectedIndex(index);
+
+        // tell server which companion we're editing
+        ModNetworks.CHANNEL.sendToServer(
+                new SelectCompanionC2SPacket(this.menu.getBlockPos(), index)
+        );
+
+        rebuildVariantButtons();
+    }
+
+    private int findNextNonEmptyCompanionIndex() {
+        List<ItemStack> comps = this.menu.getCompanions();
+        if (comps == null || comps.isEmpty()) {
+            return -1;
+        }
+
+        for (int i = this.selectedIndex; i < comps.size(); i++) {
+            if (!comps.get(i).isEmpty()) return i;
+        }
+
+        for (int i = this.selectedIndex - 1; i >= 0; i--) {
+            if (!comps.get(i).isEmpty()) return i;
+        }
+
+        return -1;
+    }
+
+    private void onEquipClicked() {
+        Minecraft mc = Minecraft.getInstance();
+
+        List<ItemStack> companions = this.menu.getCompanions();
+        if (companions == null || companions.isEmpty()) {
+            if (mc.player != null) {
+                mc.player.displayClientMessage(new TextComponent("No companions to equip."), true);
+            }
+            return;
+        }
+
+        if (selectedIndex < 0 || selectedIndex >= companions.size()) {
+            selectedIndex = 0;
+        }
+
+        ItemStack stack = this.menu.getCompanion(selectedIndex);
+        if (stack.isEmpty()) {
+            if (mc.player != null) {
+                mc.player.displayClientMessage(new TextComponent("Selected companion is empty."), true);
+            }
+            return;
+        }
+
+        BlockPos pos = this.menu.getBlockPos();
+
+        ModNetworks.CHANNEL.sendToServer(new EquipCompanionC2SPacket(pos, selectedIndex));
+
+        this.menu.removeCompanionClient(selectedIndex);
+
+        List<ItemStack> updated = this.menu.getCompanions();
+        if (updated.isEmpty()) {
+            this.selectedIndex = -1;
+        } else if (this.selectedIndex >= updated.size()) {
+            this.selectedIndex = updated.size() - 1;
+        }
+
+        this.init();
+
+        if (mc.player != null) {
+            mc.player.displayClientMessage(new TextComponent("Equipped companion."), true);
+        }
+    }
+
+    public void quickEquipFromRow(int realIndex) {
+        List<ItemStack> companions = this.menu.getCompanions();
+        if (companions == null || companions.isEmpty()) return;
+        if (realIndex < 0 || realIndex >= companions.size()) return;
+
+        ItemStack stack = this.menu.getCompanion(realIndex);
+        if (stack.isEmpty()) return;
+
+        BlockPos pos = this.menu.getBlockPos();
+
+        ModNetworks.CHANNEL.sendToServer(new EquipCompanionC2SPacket(pos, realIndex));
+
+        this.menu.removeCompanionClient(realIndex);
+
+        List<ItemStack> updated = this.menu.getCompanions();
+        if (updated.isEmpty()) {
+            this.selectedIndex = -1;
+        } else {
+            if (this.selectedIndex >= updated.size()) this.selectedIndex = updated.size() - 1;
+            if (this.selectedIndex < 0) this.selectedIndex = 0;
+            this.menu.setSelectedIndex(this.selectedIndex);
+        }
+
+        this.init();
+    }
 
     public void onHealPressed(int companionIndex) {
         // send packet to server: heal this companion
         System.out.println("Companion Healed!");
     }
 
+    // -------------------------------------------------------------------
+    // Variant menu actions
+    // -------------------------------------------------------------------
+
+    private void toggleVariantMenu() {
+        this.variantsOpen = !this.variantsOpen;
+    }
+
+    private void onChangeModelClicked() {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            List<ItemStack> companions = this.menu.getCompanions();
+            if (companions == null || companions.isEmpty()) {
+                return;
+            }
+
+            if (selectedIndex < 0 || selectedIndex >= companions.size()) {
+                selectedIndex = 0;
+            }
+
+            ItemStack stack = companions.get(selectedIndex);
+            if (stack.isEmpty()) return;
+
+            CompanionSeries series = CompanionItem.getPetSeries(stack);
+            String currentType = CompanionItem.getPetType(stack);
+
+            if (currentType == null || currentType.isEmpty()) {
+                return;
+            }
+
+            String nextType = null;
+
+            if (series == CompanionSeries.PET) {
+                PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
+                if (modelType == null) {
+                    return;
+                }
+
+                if (mc.player == null) return;
+
+                List<PetHelper.PetVariant> variants = modelType.getVariants(mc.player.getUUID());
+                if (variants == null || variants.isEmpty()) {
+                    return;
+                }
+
+                int currentIndex = 0;
+                for (int i = 0; i < variants.size(); i++) {
+                    if (variants.get(i).type().equalsIgnoreCase(currentType)) {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                int nextIndex = (currentIndex + 1) % variants.size();
+                PetHelper.PetVariant nextVariant = variants.get(nextIndex);
+                nextType = nextVariant.type();
+
+                String currentName = CompanionItem.getPetName(stack);
+                String previousDisplayName = variants.get(currentIndex).displayName();
+                if (currentName == null || currentName.equalsIgnoreCase(previousDisplayName)) {
+                    CompanionItem.setPetName(stack, nextVariant.displayName());
+                }
+            } else if (series == CompanionSeries.LEGEND) {
+                String[] possible = new String[] { "eternal", "giant", "minion", "antlion" };
+
+                int idx = 0;
+                for (int i = 0; i < possible.length; i++) {
+                    if (possible[i].equalsIgnoreCase(currentType)) {
+                        idx = i;
+                        break;
+                    }
+                }
+
+                nextType = possible[(idx + 1) % possible.length];
+            }
+
+            if (nextType == null || nextType.equalsIgnoreCase(currentType)) {
+                return;
+            }
+
+            CompanionItem.setPetType(stack, nextType);
+
+            UUID uuid = CompanionItem.getCompanionUUID(stack);
+            if (uuid != null) {
+                CACHED_COMPANIONS.invalidate(uuid);
+            }
+
+            if (mc.player != null) {
+                mc.player.displayClientMessage(new TextComponent("Changed model to: " + nextType), true);
+            }
+
+            BlockPos pos = this.menu.getBlockPos();
+            int index = this.selectedIndex;
+            String variantType = nextType;
+
+            ModNetworks.CHANNEL.sendToServer(new ChangeCompanionVariantC2SPacket(pos, index, variantType));
+
+        } catch (Exception e) {
+            if (mc.player != null) {
+                mc.player.displayClientMessage(
+                        new TextComponent("Error changing model: " + e.getClass().getSimpleName()),
+                        true
+                );
+            }
+        }
+    }
+
+    private void changeVariant(String variantType) {
+        Minecraft mc = Minecraft.getInstance();
+        try {
+            List<ItemStack> companions = this.menu.getCompanions();
+            if (companions == null || companions.isEmpty()) return;
+
+            if (selectedIndex < 0 || selectedIndex >= companions.size()) {
+                selectedIndex = 0;
+            }
+
+            ItemStack stack = this.menu.getCompanion(selectedIndex);
+            if (stack.isEmpty()) return;
+
+            CompanionSeries series = CompanionItem.getPetSeries(stack);
+            String currentType = CompanionItem.getPetType(stack);
+
+            if (variantType == null || variantType.isEmpty()) return;
+            if (currentType != null && variantType.equalsIgnoreCase(currentType)) return;
+
+            if (series == CompanionSeries.PET) {
+                PetHelper.PetVariant newVariant = PetHelper.getVariant(variantType).orElse(null);
+                if (newVariant == null) return;
+
+                if (currentType != null) {
+                    PetHelper.PetVariant previousVariant = PetHelper.getVariant(currentType).orElse(null);
+                    if (previousVariant != null) {
+                        String currentName = CompanionItem.getPetName(stack);
+                        String prevDisplay = previousVariant.displayName();
+                        if (currentName == null || currentName.equalsIgnoreCase(prevDisplay)) {
+                            CompanionItem.setPetName(stack, newVariant.displayName());
+                        }
+                    }
+                }
+            }
+
+            CompanionItem.setPetType(stack, variantType);
+
+            UUID uuid = CompanionItem.getCompanionUUID(stack);
+            if (uuid != null) {
+                CACHED_COMPANIONS.invalidate(uuid);
+            }
+
+            if (mc.player != null) {
+                mc.player.displayClientMessage(new TextComponent("Changed model to: " + variantType), true);
+            }
+
+            ModNetworks.CHANNEL.sendToServer(
+                    new ChangeCompanionVariantC2SPacket(
+                            this.menu.getBlockPos(),
+                            this.selectedIndex,
+                            variantType
+                    )
+            );
+
+        } catch (Exception e) {
+            if (mc.player != null) {
+                mc.player.displayClientMessage(
+                        new TextComponent("Error changing model: " + e.getClass().getSimpleName()),
+                        true
+                );
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // Variant menu building / animation
+    // -------------------------------------------------------------------
+
+    private void rebuildVariantButtons() {
+        for (Button b : variantButtons) this.removeWidget(b);
+        variantButtons.clear();
+
+        List<ItemStack> companions = this.menu.getCompanions();
+        if (companions == null || companions.isEmpty()) return;
+
+        if (selectedIndex < 0 || selectedIndex >= companions.size()) selectedIndex = 0;
+
+        ItemStack baseStack = this.menu.getCompanion(selectedIndex);
+        if (baseStack.isEmpty()) return;
+
+        CompanionSeries series = CompanionItem.getPetSeries(baseStack);
+        String currentType = CompanionItem.getPetType(baseStack);
+        if (currentType == null || currentType.isEmpty()) return;
+
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.player == null) return;
+
+        int baseX = detailsX + detailsWidth + 2;
+        int baseY = detailsY + 5;
+
+        int btnWidth = 18;
+        int btnHeight = 18;
+
+        if (series == CompanionSeries.PET) {
+            PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
+            if (modelType == null) return;
+
+            List<PetHelper.PetVariant> variants = modelType.getVariants(mc.player.getUUID());
+            for (int i = 0; i < variants.size(); i++) {
+                PetHelper.PetVariant v = variants.get(i);
+                String type = v.type();
+                if (type == null || type.isEmpty()) continue;
+
+                int y = baseY + i * 20;
+
+                ItemStack icon = baseStack.copy();
+                CompanionItem.setPetType(icon, type);
+
+                Component tip = new TextComponent(v.displayName());
+
+                Button b = new VariantItemButton(
+                        baseX, y, 18, 18,
+                        icon,
+                        tip,
+                        btn -> changeVariant(type)
+                );
+
+                variantButtons.add(b);
+                this.addRenderableWidget(b);
+            }
+        } else if (series == CompanionSeries.LEGEND) {
+            String[] types = new String[] { "eternal", "giant", "minion", "antlion" };
+
+            for (int i = 0; i < types.length; i++) {
+                String type = types[i];
+                int y = baseY + i * 20;
+
+                String labelText = type.substring(0, 1).toUpperCase();
+                Component tooltip = new TextComponent(type.substring(0, 1).toUpperCase() + type.substring(1));
+
+                Button b = new VariantTextButton(
+                        baseX,
+                        y,
+                        18,
+                        18,
+                        new TextComponent(labelText),
+                        tooltip,
+                        btn -> changeVariant(type)
+                );
+
+                variantButtons.add(b);
+                this.addRenderableWidget(b);
+            }
+        } else {
+            return;
+        }
+
+        updateVariantButtonPositions();
+    }
+
+    private void updateVariantButtonPositions() {
+        if (variantButtons.isEmpty()) return;
+
+        int slideDistance = 24;
+
+        int baseX = detailsX + detailsWidth + 2;
+        int baseY = detailsY + 15;
+
+        float perButtonDelay = 0.07f;
+
+        for (int i = 0; i < variantButtons.size(); i++) {
+            Button b = variantButtons.get(i);
+
+            int y = baseY + i * 20;
+
+            float delay = i * perButtonDelay;
+            float t;
+
+            if (variantsAnim <= delay) {
+                t = 0.0f;
+            } else {
+                t = (variantsAnim - delay) / (1.0f - delay);
+            }
+
+            t = Mth.clamp(t, 0.0f, 1.0f);
+
+            int offset = (int) ((1.0f - t) * slideDistance);
+
+            b.x = baseX - offset;
+            b.y = y;
+
+            b.visible = variantsAnim > 0.02f;
+        }
+    }
+
+    // -------------------------------------------------------------------
+    // Companion list / buttons rebuilding
+    // -------------------------------------------------------------------
+
     private void rebuildFilteredList() {
         List<ItemStack> companions = this.menu.getCompanions();
 
-        // If search bar is missing for some reason, fall back to "show all"
         if (this.searchBar == null) {
             this.filteredIndices = new ArrayList<>();
             for (int i = 0; i < companions.size(); i++) this.filteredIndices.add(i);
@@ -1483,13 +1447,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             this.filteredIndices = this.searchBar.filter(companions);
         }
 
-        // keep selectedIndex valid (selectedIndex is REAL index)
         if (this.selectedIndex >= 0 && !this.filteredIndices.contains(this.selectedIndex)) {
             this.selectedIndex = this.filteredIndices.isEmpty() ? -1 : this.filteredIndices.get(0);
             this.menu.setSelectedIndex(this.selectedIndex);
         }
 
-        // if nothing selected but we have results, select first
         if (this.selectedIndex == -1 && !this.filteredIndices.isEmpty()) {
             this.selectedIndex = this.filteredIndices.get(0);
             this.menu.setSelectedIndex(this.selectedIndex);
@@ -1499,10 +1461,9 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.filteredIndices.sort((a, b) -> {
             boolean fa = isFavouriteIndex(a);
             boolean fb = isFavouriteIndex(b);
-            if (fa != fb) return fa ? -1 : 1;   // fav -> top
-            return Integer.compare(a, b);       // keep original order otherwise
+            if (fa != fb) return fa ? -1 : 1;
+            return Integer.compare(a, b);
         });
-
     }
 
     private void rebuildCompanionButtonsOnly() {
@@ -1516,6 +1477,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             this.removeWidget(b);
             this.removeWidget(b.quickEquipButton);
         }
+
         companionButtons.clear();
 
         int btnX = this.listX;
@@ -1542,7 +1504,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                     new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button.png"),
                     new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_display_button_highlighted.png"),
                     this.menu,
-                    realIndex,     // IMPORTANT: real index (not row)
+                    realIndex,
                     this
             );
 
@@ -1553,87 +1515,24 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
     }
 
-    public void quickEquipFromRow(int realIndex) {
-
-        List<ItemStack> companions = this.menu.getCompanions();
-        if (companions == null || companions.isEmpty()) return;
-        if (realIndex < 0 || realIndex >= companions.size()) return;
-
-        ItemStack stack = this.menu.getCompanion(realIndex);
-        if (stack.isEmpty()) return;
-
-        BlockPos pos = this.menu.getBlockPos();
-
-        // 1) send to server
-        ModNetworks.CHANNEL.sendToServer(new EquipCompanionC2SPacket(pos, realIndex));
-
-        // 2) mirror removal on client
-        this.menu.removeCompanionClient(realIndex);
-
-        // 3) keep selection valid
-        List<ItemStack> updated = this.menu.getCompanions();
-        if (updated.isEmpty()) {
-            this.selectedIndex = -1;
-        } else {
-            if (this.selectedIndex >= updated.size()) this.selectedIndex = updated.size() - 1;
-            if (this.selectedIndex < 0) this.selectedIndex = 0;
-            this.menu.setSelectedIndex(this.selectedIndex);
-        }
-
-        // 4) rebuild UI
-        this.init();
-    }
-
-
-    @Override
-    public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // If the search box is focused, let it consume keys FIRST (prevents 'E' closing the screen)
-        if (this.searchBar != null) {
-            var box = this.searchBar.widget();
-
-            if (keyCode == 256 && box.isFocused()) { // 256 = GLFW_KEY_ESCAPE
-                box.setFocus(false);
-                return true;
-            }
-            if (box.isFocused()) {
-                if (box.keyPressed(keyCode, scanCode, modifiers)) return true;
-
-                // Also swallow inventory keybinds while typing (E)
-                return true;
-            }
-        }
-
-        return super.keyPressed(keyCode, scanCode, modifiers);
-    }
-
-    @Override
-    public boolean charTyped(char codePoint, int modifiers) {
-        // Forward typed characters to the search box when focused
-        if (this.searchBar != null) {
-            var box = this.searchBar.widget();
-            if (box.isFocused() && box.charTyped(codePoint, modifiers)) {
-                return true;
-            }
-        }
-        return super.charTyped(codePoint, modifiers);
-    }
-
+    // -------------------------------------------------------------------
+    // Favourites
+    // -------------------------------------------------------------------
 
     private boolean isFavouriteIndex(int realIndex) {
         List<ItemStack> comps = this.menu.getCompanions();
         if (comps == null || realIndex < 0 || realIndex >= comps.size()) return false;
 
-        ItemStack s = comps.get(realIndex); // IMPORTANT: from the actual list
+        ItemStack s = comps.get(realIndex);
         return !s.isEmpty() && s.hasTag() && s.getTag().getBoolean(FAV_TAG);
     }
 
     public void toggleFavourite(int realIndex) {
-
         List<ItemStack> comps = this.menu.getCompanions();
         if (comps == null || comps.isEmpty()) return;
         if (realIndex < 0 || realIndex >= comps.size()) return;
 
-        ItemStack stack = comps.get(realIndex); // IMPORTANT: from the actual list
+        ItemStack stack = comps.get(realIndex);
         if (stack.isEmpty()) return;
 
         boolean newFav = !isFavouriteIndex(realIndex);
@@ -1643,17 +1542,13 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 new ToggleFavouriteC2SPacket(this.menu.getBlockPos(), realIndex, newFav)
         );
 
-
-        // re-sort + rebuild visible rows
         rebuildFilteredList();
         rebuildCompanionButtonsOnly();
     }
 
     public boolean isFavourite(int realIndex) {
-        return isFavouriteIndex(realIndex); // or inline the tag check
+        return isFavouriteIndex(realIndex);
     }
-
-
 }
 
 
