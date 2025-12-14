@@ -3,6 +3,7 @@ package net.bustin.vending_companions.blocks.custom;
 import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.blocks.entity.ModBlockEntites;
 import net.bustin.vending_companions.blocks.entity.custom.CompanionVendingMachineBlockEntity;
+import net.minecraft.ChatFormatting;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.network.chat.TextComponent;
@@ -47,38 +48,57 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
     public InteractionResult use(BlockState pState, Level pLevel, BlockPos pPos,
                                  Player pPlayer, InteractionHand pHand, BlockHitResult pHit) {
 
+        // If player clicked the UPPER half, reroute to LOWER (BE lives there)
         if (pState.getValue(HALF) == DoubleBlockHalf.UPPER) {
             BlockPos below = pPos.below();
             if (pLevel.getBlockState(below).getBlock() != this) return InteractionResult.PASS;
             pPos = below;
             pState = pLevel.getBlockState(pPos);
         }
-        if (!pLevel.isClientSide()) {
-            BlockEntity entity = pLevel.getBlockEntity(pPos);
-            if (entity instanceof CompanionVendingMachineBlockEntity) {
-                CompanionVendingMachineBlockEntity locker = (CompanionVendingMachineBlockEntity) entity;
-                ItemStack held = pPlayer.getItemInHand(pHand);
 
-                // If holding a companion, always add one to the locker
-                if (!held.isEmpty() && held.getItem() instanceof CompanionItem) {
-                    ItemStack toStore = held.copy();
-                    toStore.setCount(1);
-                    locker.insertCompanion(toStore);
-                    held.shrink(1); // remove one from player hand
-
-                    // Don't open the GUI in this case, just store
-                    return InteractionResult.CONSUME;
-                }
-
-                // Otherwise, just open the GUI as before
-                NetworkHooks.openGui(((ServerPlayer) pPlayer), locker, pPos);
-            } else {
-                throw new IllegalStateException("Our Container provider is missing!");
-            }
+        // Client side: just return success so it plays hand animation
+        if (pLevel.isClientSide()) {
+            return InteractionResult.sidedSuccess(true);
         }
 
-        return InteractionResult.sidedSuccess(pLevel.isClientSide());
+        BlockEntity entity = pLevel.getBlockEntity(pPos);
+        if (!(entity instanceof CompanionVendingMachineBlockEntity locker)) {
+            throw new IllegalStateException("Our Container provider is missing!");
+        }
+
+        // ---------------- OWNER GATE (VH-style) ----------------
+        // First valid interaction claims ownership
+        locker.setOwner(pPlayer);
+
+        // If not owner, deny BOTH inserting and opening GUI
+        if (!locker.isOwner(pPlayer)) {
+            pPlayer.displayClientMessage(
+                    new TextComponent("You do not own this Companion Locker.")
+                            .withStyle(ChatFormatting.RED),
+                    true
+            );
+            return InteractionResult.CONSUME;
+        }
+        // -------------------------------------------------------
+
+        ItemStack held = pPlayer.getItemInHand(pHand);
+
+        // If holding a companion, add one to the locker and DON'T open GUI
+        if (!held.isEmpty() && held.getItem() instanceof CompanionItem) {
+            ItemStack toStore = held.copy();
+            toStore.setCount(1);
+
+            locker.insertCompanion(toStore);
+            held.shrink(1);
+
+            return InteractionResult.CONSUME;
+        }
+
+        // Otherwise, open the GUI
+        NetworkHooks.openGui((ServerPlayer) pPlayer, locker, pPos);
+        return InteractionResult.CONSUME;
     }
+
 
 
 

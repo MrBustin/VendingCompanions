@@ -30,10 +30,13 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.UUID;
 
 public class CompanionVendingMachineBlockEntity extends BlockEntity implements MenuProvider {
 
     private static final String COMPANIONS_TAG = "Companions";
+
+    private UUID owner;
 
     private final ItemStackHandler itemHandler = new ItemStackHandler(1){
         @Override
@@ -168,6 +171,10 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     public void load(CompoundTag tag) {
         super.load(tag);
 
+        if (tag.hasUUID("Owner")) {
+            owner = tag.getUUID("Owner");
+        }
+
         companions.clear();
         if (tag.contains(COMPANIONS_TAG, Tag.TAG_LIST)) {
             ListTag list = tag.getList(COMPANIONS_TAG, Tag.TAG_COMPOUND);
@@ -186,6 +193,8 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     @Override
     protected void saveAdditional(CompoundTag tag) {
         super.saveAdditional(tag);
+
+        if (owner != null) tag.putUUID("Owner", owner);
 
         ListTag list = new ListTag();
         for (ItemStack stack : companions) {
@@ -228,6 +237,17 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
             return lazyItemHandler.cast();
         }
         return super.getCapability(cap, side);
+    }
+
+    public boolean isOwner(Player player) {
+        return owner == null || owner.equals(player.getUUID());
+    }
+
+    public void setOwner(Player player) {
+        if (owner == null) {
+            owner = player.getUUID();
+            setChanged();
+        }
     }
 }
 
