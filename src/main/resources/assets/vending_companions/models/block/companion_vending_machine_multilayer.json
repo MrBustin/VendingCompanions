@@ -1,0 +1,15 @@
+{
+  "loader": "forge:multi-layer",
+  "layers": {
+    "solid": {
+      "parent": "vending_companions:block/companion_vending_machine_solid"
+    },
+    "translucent": {
+      "parent": "vending_companions:block/companion_vending_machine_translucent"
+    }
+  },
+  "ambientocclusion": false,
+  "textures": {
+    "particle": "vending_companions:block/companion_vending_machine_base"
+  }
+}
