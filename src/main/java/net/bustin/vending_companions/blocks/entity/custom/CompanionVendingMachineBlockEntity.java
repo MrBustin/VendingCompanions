@@ -249,6 +249,18 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
             setChanged();
         }
     }
+
+    @Override
+    public net.minecraft.world.phys.AABB getRenderBoundingBox() {
+        BlockPos p = this.getBlockPos();
+        // 1x2x1 block volume (lower + upper), plus a little padding for items
+        return new net.minecraft.world.phys.AABB(
+                p.getX(),     p.getY(),     p.getZ(),
+                p.getX() + 1, p.getY() + 2, p.getZ() + 1
+        ).inflate(0.25);
+    }
+
+
 }
 
 

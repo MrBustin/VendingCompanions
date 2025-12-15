@@ -76,7 +76,7 @@ public class CompanionVendingMachineRenderer implements BlockEntityRenderer<Comp
         // positions are in block-local coordinates (0..1 for x/z, y is in blocks)
         renderShelfItem(s0, poseStack, buffer, level, bePos, packedOverlay, 0.50f, 1.65f, 0.30f);
         renderShelfItem(s1, poseStack, buffer, level, bePos, packedOverlay, 0.50f, 1.30f, 0.30f);
-        renderShelfItem(s2, poseStack, buffer, level, bePos, packedOverlay, 0.50f, 0.80f, 0.30f);
+        renderShelfItem(s2, poseStack, buffer, level, bePos, packedOverlay, 0.50f, 0.82f, 0.285f);
 
         poseStack.popPose();
     }

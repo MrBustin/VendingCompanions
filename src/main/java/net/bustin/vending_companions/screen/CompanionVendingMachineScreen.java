@@ -480,7 +480,25 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         boolean healWasVisible = this.healButton != null && this.healButton.visible;
         if (this.healButton != null) this.healButton.visible = false;
 
+        // --- IMPORTANT: prevent super.render from drawing variant buttons ---
+        boolean[] prevVariantVis = null;
+        if (!this.variantButtons.isEmpty()) {
+            prevVariantVis = new boolean[this.variantButtons.size()];
+            for (int i = 0; i < this.variantButtons.size(); i++) {
+                Button b = this.variantButtons.get(i);
+                prevVariantVis[i] = b.visible;
+                b.visible = false; // temporarily hide so super doesn't draw them
+            }
+        }
+
         super.render(poseStack, mouseX, mouseY, delta);
+
+        // restore variant visibility for interaction logic + our manual render
+        if (prevVariantVis != null) {
+            for (int i = 0; i < this.variantButtons.size(); i++) {
+                this.variantButtons.get(i).visible = prevVariantVis[i];
+            }
+        }
 
         // --- YOUR custom renders (hearts etc.) ---
         renderVariantOverlay(poseStack);
@@ -493,8 +511,33 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         // draw heal button on TOP of hearts
         if (this.healButton != null && this.healButton.visible) {
             poseStack.pushPose();
-            poseStack.translate(0, 0, 500); // big Z so it sits on top
+            poseStack.translate(0, 0, 500);
             this.healButton.render(poseStack, mouseX, mouseY, delta);
+            poseStack.popPose();
+        }
+
+        // ------------------------------------------------------------
+        // Variant buttons "slide out from behind GUI" scissor pass
+        // ------------------------------------------------------------
+        if (this.variantsAnim > 0.02f && !this.variantButtons.isEmpty()) {
+
+            // Vertical seam where buttons should start becoming visible.
+            // Anything LEFT of this seam is hidden. No Y trimming at all.
+            int seamX = this.detailsX + this.detailsWidth + 6; // tweak +1/+2 if you want it tighter
+
+            // Ensure clipping doesn't affect anything else
+            poseStack.pushPose();
+            poseStack.translate(0, 0, 150); // above most GUI
+
+            enableVerticalOnlyScissor(seamX);
+
+            for (Button b : this.variantButtons) {
+                if (b == null || !b.visible) continue;
+                b.render(poseStack, mouseX, mouseY, delta);
+            }
+
+            disableScissor();
+
             poseStack.popPose();
         }
 
@@ -517,7 +560,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         // heal tooltip
         if (healButton != null && healButton.visible && healButton.isMouseOver(mouseX, mouseY)) {
-            Component tip = healButton.getTooltip(); // no cast
+            Component tip = healButton.getTooltip();
             if (tip != null && !tip.getString().isEmpty()) {
                 this.renderTooltip(poseStack, tip, mouseX, mouseY);
                 return;
@@ -547,6 +590,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         // vanilla slot/item tooltips last
         this.renderTooltip(poseStack, mouseX, mouseY);
     }
+
 
 
     @Override
@@ -875,53 +919,58 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         CompanionSeries series = CompanionItem.getPetSeries(stack);
         String type = CompanionItem.getPetType(stack);
 
-        EntityType<PetEntity> entityType;
-        if (series == CompanionSeries.PET) {
-            entityType = PetHelper.getVariant(type)
-                    .map(PetHelper.PetVariant::entityType)
-                    .orElse(ModEntities.PET);
-        } else {
-            entityType = ModEntities.PET;
-        }
-
-        PetEntity pet = entityType.create(level);
+        PetEntity pet = ModEntities.PET.create(level);
         if (pet == null) return null;
 
+        // IMPORTANT:
+        // Always apply companion data first so the entity has the correct skin/model context.
+        pet.setCompanionData(stack);
+
+        // Then apply PET traits (if any) on top
         if (series == CompanionSeries.PET) {
             PetHelper.getVariant(type).ifPresent(variant -> {
                 if (variant.traits() != null) {
                     variant.traits().apply(pet);
                 }
             });
-        } else {
-            pet.setCompanionData(stack);
         }
 
+        // spawn data (vanilla entity data)
         CompoundTag spawnData = CompanionItem.getSpawnData(stack);
         if (spawnData != null) {
             pet.setVanillaEntityData(spawnData);
         }
 
+        // cosmetics
         List<Integer> cols = CompanionItem.getAllCosmeticColours(stack);
-        List<CompanionParticleTrailItem.TrailType> types = CompanionItem.getAllCosmeticTrailTypes(stack);
-        List<Integer> validCols = new ArrayList<>();
-        List<CompanionParticleTrailItem.TrailType> validTypes = new ArrayList<>();
+        List<CompanionParticleTrailItem.TrailType> trails = CompanionItem.getAllCosmeticTrailTypes(stack);
 
-        for (int i = 0; i < cols.size(); ++i) {
-            if (i < types.size() && cols.get(i) != -1) {
+        List<Integer> validCols = new ArrayList<>();
+        List<CompanionParticleTrailItem.TrailType> validTrails = new ArrayList<>();
+
+        for (int i = 0; i < cols.size(); i++) {
+            if (i < trails.size() && cols.get(i) != -1) {
                 validCols.add(cols.get(i));
-                validTypes.add(types.get(i));
+                validTrails.add(trails.get(i));
             }
         }
 
         pet.setParticleColours(validCols);
-        pet.setParticleTrailTypes(validTypes);
+        pet.setParticleTrailTypes(validTrails);
 
+        // apply VH skin system
         CompanionPetManager.applySkinsToEntity(pet, stack);
+
+        // GUI safety (optional but recommended)
+        pet.setNoAi(true);
+        pet.setInvulnerable(true);
+        pet.setSilent(true);
 
         CACHED_COMPANIONS.put(uuid, pet);
         return pet;
     }
+
+
 
     private void renderCompanionPreviewEntity(PoseStack poseStack, int mouseX, int mouseY) {
         if (this.menu.getCompanions().isEmpty()) return;
@@ -1458,10 +1507,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 CACHED_COMPANIONS.invalidate(uuid);
             }
 
-            if (mc.player != null) {
-                mc.player.displayClientMessage(new TextComponent("Changed model to: " + nextType), true);
-            }
-
             BlockPos pos = this.menu.getBlockPos();
             int index = this.selectedIndex;
             String variantType = nextType;
@@ -1520,9 +1565,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 CACHED_COMPANIONS.invalidate(uuid);
             }
 
-            if (mc.player != null) {
-                mc.player.displayClientMessage(new TextComponent("Changed model to: " + variantType), true);
-            }
 
             ModNetworks.CHANNEL.sendToServer(
                     new ChangeCompanionVariantC2SPacket(
@@ -1587,7 +1629,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 Component tip = new TextComponent(v.displayName());
 
                 Button b = new VariantItemButton(
-                        baseX, y, 18, 18,
+                        baseX, y, 20, 20,
                         icon,
                         tip,
                         btn -> changeVariant(type)
@@ -1609,8 +1651,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 Button b = new VariantTextButton(
                         baseX,
                         y,
-                        18,
-                        18,
+                        20,
+                        20,
                         new TextComponent(labelText),
                         tooltip,
                         btn -> changeVariant(type)
@@ -1629,17 +1671,17 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private void updateVariantButtonPositions() {
         if (variantButtons.isEmpty()) return;
 
-        int slideDistance = 24;
+        int slideDistance = 30;
 
-        int baseX = detailsX + detailsWidth + 2;
+        int baseX = detailsX + detailsWidth + 6;
         int baseY = detailsY + 15;
 
-        float perButtonDelay = 0.07f;
+        float perButtonDelay = 0.1f;
 
         for (int i = 0; i < variantButtons.size(); i++) {
             Button b = variantButtons.get(i);
 
-            int y = baseY + i * 20;
+            int y = baseY + i * 22;
 
             float delay = i * perButtonDelay;
             float t;
@@ -1659,6 +1701,31 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
             b.visible = variantsAnim > 0.02f;
         }
+    }
+
+    private void enableVerticalOnlyScissor(int seamGuiX) {
+        Minecraft mc = Minecraft.getInstance();
+        com.mojang.blaze3d.platform.Window win = mc.getWindow();
+
+        double scale = win.getGuiScale();
+
+        // RenderSystem scissor uses PIXELS, origin is bottom-left.
+        int x = (int) Math.floor(seamGuiX * scale);
+        int y = 0;
+
+        int w = (int) Math.ceil((this.width - seamGuiX) * scale);
+        int h = win.getHeight(); // FULL HEIGHT => no horizontal trimming
+
+        if (w <= 0) {
+            RenderSystem.disableScissor();
+            return;
+        }
+
+        RenderSystem.enableScissor(x, y, w, h);
+    }
+
+    private void disableScissor() {
+        RenderSystem.disableScissor();
     }
 
     // -------------------------------------------------------------------

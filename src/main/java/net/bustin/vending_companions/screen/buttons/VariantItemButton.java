@@ -28,13 +28,26 @@ public class VariantItemButton extends Button {
     public void renderButton(PoseStack poseStack, int mouseX, int mouseY, float partialTick) {
         super.renderButton(poseStack, mouseX, mouseY, partialTick);
 
-        if (!icon.isEmpty()) {
-            Minecraft mc = Minecraft.getInstance();
-            int ix = this.x + (this.width - 16) / 2;
-            int iy = this.y + (this.height - 16) / 2;
+        if (icon.isEmpty()) return;
 
-            RenderSystem.enableDepthTest();
-            mc.getItemRenderer().renderAndDecorateItem(icon, ix, iy);
-        }
+        Minecraft mc = Minecraft.getInstance();
+        int ix = this.x + (this.width - 16) / 2;
+        int iy = this.y + (this.height - 16) / 2;
+
+        poseStack.pushPose();
+        poseStack.translate(0, 0, 50);
+
+        float oldBlit = mc.getItemRenderer().blitOffset;
+        mc.getItemRenderer().blitOffset = 500.0F;
+
+        RenderSystem.enableDepthTest();
+        mc.getItemRenderer().renderAndDecorateItem(icon, ix, iy);
+        mc.getItemRenderer().renderGuiItemDecorations(mc.font, icon, ix, iy);
+        RenderSystem.disableDepthTest(); // ✅ IMPORTANT
+
+        mc.getItemRenderer().blitOffset = oldBlit;
+        poseStack.popPose();
     }
+
+
 }
