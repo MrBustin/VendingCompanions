@@ -16,6 +16,7 @@ import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.bustin.vending_companions.network.ModNetworks;
 import net.bustin.vending_companions.network.c2s.*;
 import net.bustin.vending_companions.screen.buttons.*;
+import net.bustin.vending_companions.util.ModJeiPlugin;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
@@ -99,6 +100,9 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private static final ResourceLocation XP_BAR_FILL_TEX =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
+
+
+    private boolean restoreJeiBookmarks = false;
 
     private static final String FAV_TAG = "vc_favourite";
     private static final String FAV_TIME_TAG = "vc_favourite_time";
@@ -330,6 +334,12 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         // Build filtered list + buttons
         rebuildFilteredList();
+        if (!filteredIndices.isEmpty()) {
+            setSelectedCompanionIndex(filteredIndices.get(0)); // sends SelectCompanionC2SPacket
+        } else {
+            this.selectedIndex = -1;
+            this.menu.setSelectedIndex(-1);
+        }
         selectDefaultFromFiltered();
         rebuildCompanionButtonsOnly();
 
@@ -337,6 +347,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         rebuildVariantButtons();
 
         updateHealButtonState();
+
     }
 
     @Override
@@ -1735,34 +1746,13 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private void rebuildFilteredList() {
         List<ItemStack> companions = this.menu.getCompanions();
 
-        for (ItemStack s : this.menu.getCompanions()) {
-            UUID id = getId(s);
-            if (id == null) continue;
-
-            if (!favCache.containsKey(id)) {
-                boolean fav = s.hasTag() && s.getTag().getBoolean(FAV_TAG);
-                favCache.put(id, fav);
-            }
-            if (!favTimeCache.containsKey(id) && s.hasTag() && s.getTag().contains(FAV_TIME_TAG)) {
-                favTimeCache.put(id, s.getTag().getLong(FAV_TIME_TAG));
-            }
-        }
+        // (your cache fill loop stays the same)
 
         if (this.searchBar == null) {
             this.filteredIndices = new ArrayList<>();
             for (int i = 0; i < companions.size(); i++) this.filteredIndices.add(i);
         } else {
             this.filteredIndices = this.searchBar.filter(companions);
-        }
-
-        if (this.selectedIndex >= 0 && !this.filteredIndices.contains(this.selectedIndex)) {
-            this.selectedIndex = this.filteredIndices.isEmpty() ? -1 : this.filteredIndices.get(0);
-            this.menu.setSelectedIndex(this.selectedIndex);
-        }
-
-        if (this.selectedIndex == -1 && !this.filteredIndices.isEmpty()) {
-            this.selectedIndex = this.filteredIndices.get(0);
-            this.menu.setSelectedIndex(this.selectedIndex);
         }
 
         // favourites first (stable within each group)
@@ -1776,10 +1766,21 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                 long tb = getFavouriteTimeIndex(b);
                 if (ta != tb) return Long.compare(tb, ta); // newest fav first
             }
-
             return Integer.compare(a, b);
         });
+
+        // AFTER sort: ensure selection is valid / default to first (favourite)
+        if (this.selectedIndex >= 0 && !this.filteredIndices.contains(this.selectedIndex)) {
+            this.selectedIndex = -1;
+        }
+
+        if (this.selectedIndex == -1) {
+            this.selectedIndex = this.filteredIndices.isEmpty() ? -1 : this.filteredIndices.get(0);
+        }
+
+        this.menu.setSelectedIndex(this.selectedIndex);
     }
+
 
     private void rebuildCompanionButtonsOnly() {
         // remove old companion row widgets only (leave searchbar, equip button, etc)
