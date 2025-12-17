@@ -47,7 +47,7 @@ public class CompanionVendingMachineRenderer implements BlockEntityRenderer<Comp
         ItemStack s0 = ItemStack.EMPTY, s1 = ItemStack.EMPTY, s2 = ItemStack.EMPTY;
 
         if (comps != null && !comps.isEmpty()) {
-            // build indices 0..n-1, sort like your screen: favourites first, then original index
+            // build indices 0..n-1, sort like screen: favourites first, then original index
             List<Integer> idx = new java.util.ArrayList<>();
             for (int i = 0; i < comps.size(); i++) idx.add(i);
 
@@ -68,7 +68,6 @@ public class CompanionVendingMachineRenderer implements BlockEntityRenderer<Comp
         poseStack.pushPose();
 
         // Rotate the whole "shelf space" around the block center.
-        // Your (x,y,z) coords below are authored as if the block faces NORTH.
         poseStack.translate(0.5D, 0.0D, 0.5D);
         poseStack.mulPose(Vector3f.YP.rotationDegrees(getYRotDegrees(facing)));
         poseStack.translate(-0.5D, 0.0D, -0.5D);
@@ -83,7 +82,6 @@ public class CompanionVendingMachineRenderer implements BlockEntityRenderer<Comp
 
     private static float getYRotDegrees(Direction facing) {
         // Usual blockstate -> world rotation mapping
-        // If your items appear rotated wrong, swap NORTH/SOUTH or flip EAST/WEST signs.
         return switch (facing) {
             case SOUTH -> 180f;
             case WEST  -> 90f;
@@ -93,12 +91,7 @@ public class CompanionVendingMachineRenderer implements BlockEntityRenderer<Comp
         };
     }
 
-    private static void renderShelfItem(ItemStack stack,
-                                        PoseStack poseStack,
-                                        MultiBufferSource buffer,
-                                        Level level,
-                                        BlockPos bePos,
-                                        int packedOverlay,
+    private static void renderShelfItem(ItemStack stack, PoseStack poseStack, MultiBufferSource buffer, Level level, BlockPos bePos, int packedOverlay,
                                         float x, float y, float z) {
         if (stack == null || stack.isEmpty()) return;
 
@@ -108,7 +101,6 @@ public class CompanionVendingMachineRenderer implements BlockEntityRenderer<Comp
         poseStack.translate(x, y, z);
 
         // Rotate the ITEM itself so it faces forward (optional, tweak to taste)
-        // If it looks backwards, change 180f to 0f.
         poseStack.mulPose(Vector3f.YP.rotationDegrees(180f));
 
         // scale (tweak)

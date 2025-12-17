@@ -1,13 +1,13 @@
 {
   "variants": {
-    "half=lower,facing=north": { "model": "vending_companions:block/companion_vending_machine_multilayer", "y": 0 },
-    "half=lower,facing=east":  { "model": "vending_companions:block/companion_vending_machine_multilayer", "y": 90 },
-    "half=lower,facing=south": { "model": "vending_companions:block/companion_vending_machine_multilayer", "y": 180 },
-    "half=lower,facing=west":  { "model": "vending_companions:block/companion_vending_machine_multilayer", "y": 270 },
+    "half=lower,facing=north": { "model": "vending_companions:block/companion_vending_machine", "y": 0 },
+    "half=lower,facing=east":  { "model": "vending_companions:block/companion_vending_machine", "y": 90 },
+    "half=lower,facing=south": { "model": "vending_companions:block/companion_vending_machine", "y": 180 },
+    "half=lower,facing=west":  { "model": "vending_companions:block/companion_vending_machine", "y": 270 },
 
     "half=upper,facing=north": { "model": "vending_companions:block/companion_vending_machine_particle" },
-    "half=upper,facing=east":  { "model": "vending_companions:block/companion_vending_machine_particle" },
-    "half=upper,facing=south": { "model": "vending_companions:block/companion_vending_machine_particle" },
-    "half=upper,facing=west":  { "model": "vending_companions:block/companion_vending_machine_particle" }
+    "half=upper,facing=east":  { "model": "vending_companions:block/companion_vending_machine_particle", "y": 90 },
+    "half=upper,facing=south": { "model": "vending_companions:block/companion_vending_machine_particle", "y": 180 },
+    "half=upper,facing=west":  { "model": "vending_companions:block/companion_vending_machine_particle", "y": 270 }
   }
 }

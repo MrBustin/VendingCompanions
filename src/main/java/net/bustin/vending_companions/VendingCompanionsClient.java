@@ -27,10 +27,10 @@ public class VendingCompanionsClient {
                     CompanionVendingMachineScreen::new
             );
 
-//            ItemBlockRenderTypes.setRenderLayer(
-//                    ModBlocks.COMPANION_VENDING_MACHINE.get(),
-//                    RenderType.translucent()
-//            );
+            ItemBlockRenderTypes.setRenderLayer(
+                    ModBlocks.COMPANION_VENDING_MACHINE.get(),
+                    RenderType.translucent()
+            );
 
             BlockEntityRenderers.register(
                     ModBlockEntites.COMPANION_VENDING_MACHINE_BLOCK_ENTITY.get(),
