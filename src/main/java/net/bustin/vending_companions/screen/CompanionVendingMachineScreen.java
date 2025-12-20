@@ -166,7 +166,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private int xpOffX = 22;
     private int xpOffY = 140;
 
-    private int statsOffX = 127;
+    private int statsOffX = 120;
     private int statsOffY = 118;
 
     // preview black box behind the companion
