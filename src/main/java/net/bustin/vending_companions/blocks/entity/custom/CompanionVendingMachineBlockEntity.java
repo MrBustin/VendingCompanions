@@ -13,6 +13,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.network.protocol.game.ClientboundBlockEntityDataPacket;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.sounds.SoundEvents;
+import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.MenuProvider;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -27,8 +29,11 @@ import net.minecraftforge.common.util.LazyOptional;
 import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
+import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
+import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
-import java.util.Collections;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -53,6 +58,17 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         }
     };
 
+    private final ItemStackHandler relicHandler = new ItemStackHandler(16) {
+        @Override protected void onContentsChanged(int slot) {
+            setChanged();
+            if (level != null && !level.isClientSide) {
+                level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            }
+        }
+        @Override public int getSlotLimit(int slot) { return 1; } // relics usually 1 each
+    };
+
+
     private LazyOptional<ItemStackHandler> lazyItemHandler = LazyOptional.empty();
 
     // List of all stored companions
@@ -62,39 +78,128 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         super(ModBlockEntites.COMPANION_VENDING_MACHINE_BLOCK_ENTITY.get(), pos, blockState);
     }
 
-    public void equipCompanion(ServerPlayer player, int index) {
-        List<ItemStack> companions = this.getCompanions(); // or your field directly
+    public void equipCompanion(ServerPlayer player, int index, boolean quickEquip) {
+        List<ItemStack> list = this.getCompanions();
+        if (index < 0 || index >= list.size()) return;
 
-        if (index < 0 || index >= companions.size()) {
+        ItemStack stored = list.get(index);
+        if (stored.isEmpty()) return;
+
+        ItemStack newCompanion = stored.copy();
+        newCompanion.setCount(1);
+
+        IDynamicStackHandler headStacks = getStacks(player, "head");
+
+        // --- QUICK EQUIP: swap behavior ---
+        if (quickEquip && headStacks != null && headStacks.getSlots() > 0) {
+            ItemStack oldHead = headStacks.getStackInSlot(0);
+
+            if (!oldHead.isEmpty() && oldHead.getItem() instanceof CompanionItem) {
+                ItemStack oldCopy = oldHead.copy();
+                oldCopy.setCount(1);
+
+                headStacks.setStackInSlot(0, newCompanion);
+                list.set(index, oldCopy);
+                markDirtyAndSync();
+                return;
+            }
+
+            if (oldHead.isEmpty()) {
+                headStacks.setStackInSlot(0, newCompanion);
+                list.remove(index);
+                markDirtyAndSync();
+                return;
+            }
+
+            // non-companion in head -> fallback
+            giveToInvOrDrop(player, newCompanion);
+            list.remove(index);
+            markDirtyAndSync();
             return;
         }
 
-        ItemStack stored = companions.get(index);
-        if (stored.isEmpty()) {
-            return;
-        }
+        // --- NORMAL EQUIP: NO SWAP ---
 
-        // 1) Give a COPY to the player
-        ItemStack toGive = stored.copy();
-        boolean added = player.getInventory().add(toGive);
-        if (!added) {
-            player.drop(toGive, false);
-        }
+        boolean added = player.getInventory().add(newCompanion);
+        if (!added) player.drop(newCompanion, false);
 
-        // 2) Remove this companion from the locker (shrink list)
-        companions.remove(index);   // NonNullList supports remove(int)
+
+        list.remove(index);
+        markDirtyAndSync();
+    }
+
+
+// -------- helpers --------
+
+    // --------- Curios Helpers ----------
+    private static IDynamicStackHandler getStacks(Player player, String slotKey) {
+        final IDynamicStackHandler[] out = new IDynamicStackHandler[]{ null };
+
+        CuriosApi.getCuriosHelper().getCuriosHandler(player).ifPresent(curios -> {
+            // Curios versions differ: some have getStacksHandler, some expose a map.
+            try {
+                // Newer 1.18.2 Curios style: getStacksHandler(String) -> Optional<ICurioStacksHandler>
+                Object opt = curios.getClass().getMethod("getStacksHandler", String.class).invoke(curios, slotKey);
+                if (opt instanceof java.util.Optional<?> o && o.isPresent()) {
+                    Object handlerObj = o.get();
+                    if (handlerObj instanceof ICurioStacksHandler h) {
+                        out[0] = h.getStacks();
+                    }
+                }
+            } catch (ReflectiveOperationException ignored) {
+                // Older style: getCurios() -> Map<String, ICurioStacksHandler>
+                try {
+                    Object mapObj = curios.getClass().getMethod("getCurios").invoke(curios);
+                    if (mapObj instanceof java.util.Map<?, ?> map) {
+                        Object handlerObj = map.get(slotKey);
+                        if (handlerObj instanceof ICurioStacksHandler h) {
+                            out[0] = h.getStacks();
+                        }
+                    }
+                } catch (ReflectiveOperationException ignored2) {
+                    out[0] = null;
+                }
+            }
+        });
+
+        return out[0];
+    }
+
+    public boolean pullCompanionFromHeadCurio(ServerPlayer player) {
+        IDynamicStackHandler headStacks = getStacks(player, "head");
+        if (headStacks == null || headStacks.getSlots() <= 0) return false;
+
+        ItemStack curio = headStacks.getStackInSlot(0);
+        if (curio.isEmpty() || !(curio.getItem() instanceof CompanionItem)) return false;
+
+        ItemStack toStore = curio.copy();
+        toStore.setCount(1);
+
+        // remove from curio
+        headStacks.setStackInSlot(0, ItemStack.EMPTY);
+
+        // store into locker
+        this.insertCompanion(toStore);
+
+        // optional: sync
         this.setChanged();
+        if (this.level != null) {
+            this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
+        }
 
-        // Optional: sync BE to clients more aggressively
+        return true;
+    }
+
+    private void giveToInvOrDrop(ServerPlayer player, ItemStack stack) {
+        if (!player.getInventory().add(stack)) player.drop(stack, false);
+    }
+
+    private void markDirtyAndSync() {
+        this.setChanged();
         if (this.level != null) {
             this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
         }
     }
-
-
-
-
-    // ---------- helpers ----------
 
     public List<ItemStack> getCompanions() {
         return this.companions; // or Collections.unmodifiableList, but list is fine here
@@ -131,6 +236,7 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         setChanged();
         if (level != null && !level.isClientSide) {
             level.sendBlockUpdated(worldPosition, getBlockState(), getBlockState(), 3);
+            level.playSound(null,worldPosition, SoundEvents.ARMOR_EQUIP_DIAMOND, SoundSource.BLOCKS, 0.8f,1.0f);
         }
         return true;
     }
@@ -187,6 +293,10 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         if (tag.contains("inventory", Tag.TAG_COMPOUND)) {
             itemHandler.deserializeNBT(tag.getCompound("inventory"));
         }
+
+        if (tag.contains("relics", Tag.TAG_COMPOUND)) {
+            relicHandler.deserializeNBT(tag.getCompound("relics"));
+        }
     }
 
 
@@ -207,6 +317,8 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         tag.put(COMPANIONS_TAG, list);
 
         tag.put("inventory", itemHandler.serializeNBT());
+
+        tag.put("relics", relicHandler.serializeNBT());
     }
 
     @Override

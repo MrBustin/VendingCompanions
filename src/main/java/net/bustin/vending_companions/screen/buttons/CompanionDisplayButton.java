@@ -9,13 +9,18 @@ import iskallia.vault.core.vault.modifier.spi.VaultModifier;
 import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
+import net.bustin.vending_companions.network.ModNetworks;
+import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
 import net.bustin.vending_companions.screen.CompanionVendingMachineScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.GameRenderer;
+import net.minecraft.core.BlockPos;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -66,6 +71,8 @@ public class CompanionDisplayButton extends AbstractButton {
                 18, 18,
                 new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/quick_equip_button.png"),
                 new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/quick_equip_button_highlighted.png"),
+                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/swap_button.png"),
+                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/swap_button_highlighted.png"),
                 () -> this.parent.quickEquipFromRow(this.companionIndex)
         );
 
@@ -80,9 +87,17 @@ public class CompanionDisplayButton extends AbstractButton {
         );
     }
 
+    public Component getToolTip(){
+        return new TextComponent("Shift Click to remove");
+    }
+
     @Override
     public void onPress() {
         parent.setSelectedCompanionIndex(companionIndex);
+
+        if(Screen.hasShiftDown()){
+            this.parent.onEquipClicked();
+        }
 
     }
 

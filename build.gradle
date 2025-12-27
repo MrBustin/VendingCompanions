@@ -168,7 +168,7 @@ dependencies {
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     //VH
-    implementation fg.deobf("curse.maven:vault-hunters-official-mod-458203:7329695")
+    implementation fg.deobf("curse.maven:vault-hunters-official-mod-458203:7373671")
 
 
     //deps

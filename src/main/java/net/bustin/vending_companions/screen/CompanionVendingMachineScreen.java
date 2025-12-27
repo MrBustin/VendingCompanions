@@ -6,10 +6,13 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Quaternion;
 import com.mojang.math.Vector3f;
+import iskallia.vault.client.gui.framework.render.Tooltips;
+import iskallia.vault.client.gui.framework.render.spi.ITooltipRenderFunction;
 import iskallia.vault.client.gui.helper.UIHelper;
 import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
 import iskallia.vault.core.vault.modifier.spi.VaultModifier;
 import iskallia.vault.item.CompanionItem;
+import iskallia.vault.util.function.Memo;
 import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.menu.CompanionSearchBar;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
@@ -22,6 +25,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiComponent;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.client.renderer.MultiBufferSource;
@@ -50,6 +54,8 @@ import iskallia.vault.item.CompanionSeries;
 import iskallia.vault.entity.entity.PetEntity;
 import iskallia.vault.entity.entity.pet.PetHelper;
 import iskallia.vault.init.ModEntities;
+import net.minecraftforge.items.ItemStackHandler;
+import org.jetbrains.annotations.NotNull;
 
 
 import javax.annotation.Nullable;
@@ -101,9 +107,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private static final ResourceLocation XP_BAR_FILL_TEX =
             new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
 
-
-    private boolean restoreJeiBookmarks = false;
-
     private static final String FAV_TAG = "vc_favourite";
     private static final String FAV_TIME_TAG = "vc_favourite_time";
 
@@ -152,31 +155,31 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     // all offsets are relative to (detailsX, detailsY)
 
     private int relicSlotOffX = 106;
-    private int relicSlotOffY = 72;
+    private int relicSlotOffY = 92;
 
     private int trailSlotOffX = 207;
-    private int trailSlotOffY = 91;
+    private int trailSlotOffY = 111;
 
     private int nameOffX = 0;
     private int nameOffY = 7;
 
-    private int heartsOffX = 17;
-    private int heartsOffY = 30;
+    private int heartsOffX = 16;
+    private int heartsOffY = 51;
 
     private int xpOffX = 22;
-    private int xpOffY = 140;
+    private int xpOffY = 160;
 
     private int statsOffX = 120;
-    private int statsOffY = 118;
+    private int statsOffY = 128;
 
     // preview black box behind the companion
     private int previewOffX = 15;
-    private int previewOffY = 30;
+    private int previewOffY = 50;
     private int previewWidth  = 80;
     private int previewHeight = 120;
 
-    private int temporalIconOffX = 120; // tweak to taste
-    private int temporalIconOffY = 40;
+    private int temporalIconOffX = 117; // tweak to taste
+    private int temporalIconOffY = 60;
 
     // -------------------------------------------------------------------
     // Variant slide-out menu state
@@ -187,8 +190,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
     private final List<Button> variantButtons = new ArrayList<>();
     private VariantToggleButton changeModelButton;
-
-    private Button equipButton;
 
     // -------------------------------------------------------------------
     // Entity preview cache (similar to VH CompanionHomeScreen)
@@ -283,45 +284,27 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         // ---------------- HEAL BUTTON ----------------
 
         int hbX = detailsX - 5;
-        int hbY = detailsY + 35;
+        int hbY = detailsY + 55;
 
         this.healButton = new HealButton(
                 hbX, hbY,
                 18,18,
                 new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/heal_button.png"),
                 new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/heal_button_highlighted.png"),
-                new TextComponent("Heal Companion"),
+                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/heal_button_disabled.png"),
                 () -> onHealPressed(this.selectedIndex)
 
         );
 
 
         this.addRenderableWidget(this.healButton);
-        // -----------------------------------------------------
 
-        // ---------------- EQUIP BUTTON ----------------
-        int equipWidth  = 60;
-        int equipHeight = 20;
-
-        int equipX = detailsX + previewOffX + (previewWidth - equipWidth) / 2;
-        int equipY = detailsY + previewOffY + previewHeight + 6;
-
-        this.equipButton = new Button(
-                equipX,
-                equipY,
-                equipWidth,
-                equipHeight,
-                new TextComponent("Equip"),
-                btn -> onEquipClicked()
-        );
-        this.addRenderableWidget(this.equipButton);
-        // -----------------------------------------------------
 
         // ---------------- SEARCH BAR ----------------
         int sbX = listX - 8;
-        int sbY = listY - 20;     // above the list
-        int sbW = listWidth - 14;
-        int sbH = 14;
+        int sbY = listY - 22;     // above the list
+        int sbW = listWidth;
+        int sbH = 10;
 
         this.searchBar = new CompanionSearchBar(this.font, sbX, sbY, sbW, sbH);
         this.searchBar.setOnChange(() -> {
@@ -358,7 +341,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             this.searchBar.tick();
         }
 
-        // keep your existing variant tween code below...
+
         float speed = 0.05f;
 
         if (variantsOpen) {
@@ -366,6 +349,15 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         } else {
             if (variantsAnim > 0.0f) variantsAnim = Math.max(0.0f, variantsAnim - speed);
         }
+
+        healButton.setHasSnacks(hasSnacks());
+
+        ItemStack companion = menu.getCompanion(selectedIndex);
+
+        boolean needsHeal = needsHealing(companion);
+
+        healButton.visible = needsHeal;
+        healButton.active = needsHeal;
 
         updateVariantButtonPositions();
     }
@@ -563,6 +555,16 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             }
         }
 
+        //favourite button
+        for (CompanionDisplayButton b : companionButtons) {
+            if (b.favouriteButton != null && b.favouriteButton.isMouseOver(mouseX, mouseY)) {
+                Component tip = b.favouriteButton.getTooltip();
+                if (tip != null) this.renderTooltip(poseStack, tip, mouseX, mouseY);
+                return;
+            }
+        }
+
+
         // change-model tooltip
         if (changeModelButton != null && changeModelButton.isMouseOverButton(mouseX, mouseY)) {
             this.renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
@@ -575,6 +577,14 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
             if (tip != null && !tip.getString().isEmpty()) {
                 this.renderTooltip(poseStack, tip, mouseX, mouseY);
                 return;
+            }
+        }
+
+        //search bar
+        if (searchBar != null && searchBar.widget().isMouseOver(mouseX, mouseY)) {
+            List<Component> tips = searchBar.getTooltipLines();
+            if (tips != null && !tips.isEmpty() && !tips.get(0).getString().isEmpty()) {
+                this.renderComponentTooltip(poseStack, tips, mouseX, mouseY);
             }
         }
 
@@ -593,6 +603,18 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
                         Component msg = b.getMessage();
                         if (msg != null && !msg.getString().isEmpty()) this.renderTooltip(poseStack, msg, mouseX, mouseY);
                     }
+                    return;
+                }
+            }
+        }
+
+        // Companion display button tooltip
+        for (CompanionDisplayButton b : companionButtons) {
+            if (b == null || !b.visible) continue;
+            if (b.isMouseOver(mouseX, mouseY)) {
+                Component tip = b.getToolTip();
+                if (tip != null && !tip.getString().isEmpty()) {
+                    this.renderTooltip(poseStack, tip, mouseX, mouseY);
                     return;
                 }
             }
@@ -694,7 +716,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         renderCompanionName(poseStack, stack, panelX, panelY);
         renderCompanionHeartsAndCooldown(poseStack, stack, panelX, panelY);
-        renderCompanionXpBar(poseStack, stack, panelX, panelY);
+        renderCompanionXpBar(poseStack, stack, panelX, panelY, mouseX, mouseY);
         renderCompanionStats(poseStack, stack, panelX, panelY);
         renderTemporalModifier(poseStack, stack, panelX, panelY, mouseX, mouseY);
     }
@@ -790,7 +812,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
     }
 
-    private void renderCompanionXpBar(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
+    private void renderCompanionXpBar(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
         int level = CompanionItem.getCompanionLevel(stack);
         int xp    = CompanionItem.getCompanionXP(stack);
         int xpReq = Math.max(1, CompanionItem.getXPRequiredForNextLevel(stack));
@@ -842,6 +864,24 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         this.font.draw(poseStack, levelStr,  0,  1, 0xFF000000);
         this.font.draw(poseStack, levelStr, 0, 0, 0xFFF0B100);
         poseStack.popPose();
+
+        // hover tooltip
+        if (mouseX >= barX && mouseX <= barX + XP_BAR_WIDTH &&
+                mouseY >= barY && mouseY <= barY + XP_BAR_HEIGHT) {
+
+            if (Screen.hasShiftDown()) {
+                this.renderComponentTooltip(poseStack, List.of(
+                        new TextComponent("Companion Experience"),
+                        new TextComponent("Experience: " + xp + "/" + xpReq).withStyle(ChatFormatting.GRAY),
+                        new TextComponent("Level: " + level).withStyle(ChatFormatting.GRAY)
+                ), mouseX, mouseY);
+            } else {
+                this.renderComponentTooltip(poseStack, List.of(
+                        new TextComponent("Companion Experience"),
+                        Tooltips.DEFAULT_HOLD_SHIFT_COMPONENT
+                ), mouseX, mouseY);
+            }
+        }
     }
 
     private void renderCompanionStats(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
@@ -1310,7 +1350,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         return -1;
     }
 
-    private void onEquipClicked() {
+    public void onEquipClicked() {
         Minecraft mc = Minecraft.getInstance();
 
         List<ItemStack> companions = this.menu.getCompanions();
@@ -1347,10 +1387,6 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         this.init();
-
-        if (mc.player != null) {
-            mc.player.displayClientMessage(new TextComponent("Equipped companion."), true);
-        }
     }
 
     public void quickEquipFromRow(int realIndex) {
@@ -1363,7 +1399,7 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         BlockPos pos = this.menu.getBlockPos();
 
-        ModNetworks.CHANNEL.sendToServer(new EquipCompanionC2SPacket(pos, realIndex));
+        ModNetworks.CHANNEL.sendToServer(new QuickEquipCompanionC2SPacket(pos, realIndex));
 
         this.menu.removeCompanionClient(realIndex);
 
@@ -1404,6 +1440,11 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         return hearts != maxHearts;
     }
 
+
+    public boolean hasSnacks() {
+        return !menu.getBlockEntity().getSnackHandler().getStackInSlot(0).isEmpty();
+    }
+
     private void updateHealButtonState() {
         if (healButton == null) return;
 
@@ -1419,6 +1460,10 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         boolean needsHeal = needsHealing(stack);
+
+        if (needsHeal) {
+            healButton.setHasSnacks(hasSnacks());
+        }
 
         healButton.visible = needsHeal;
         healButton.active  = needsHeal;

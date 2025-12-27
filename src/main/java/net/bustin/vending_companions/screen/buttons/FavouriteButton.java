@@ -51,6 +51,13 @@ public class FavouriteButton extends AbstractButton {
         parent.toggleFavourite();
     }
 
+    public Component getTooltip(){
+        if(parent.isFavourite()){
+            return new TextComponent("Click to Unfavorite");
+        }else
+            return new TextComponent("Click to Favourite");
+    }
+
     @Override
     public void renderButton(PoseStack poseStack, int mouseX, int mouseY, float partialTick) {
         if (!visible) return;

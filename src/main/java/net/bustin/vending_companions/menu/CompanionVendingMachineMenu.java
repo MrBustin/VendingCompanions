@@ -158,7 +158,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
     private void addRelicSlots() {
         int startX = 107; // must match relicSlotOffX in screen
-        int startY = 73;  // must match relicSlotOffY
+        int startY = 93;  // must match relicSlotOffY
 
         for (int i = 0; i < RELIC_SLOT_COUNT; i++) {
             int y = startY + i * 18;
@@ -168,7 +168,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
     private void addTrailSlots() {
         int startX = 207; // must match trailSlotOffX in screen
-        int startY = 91;  // must match trailSlotOffY
+        int startY = 111;  // must match trailSlotOffY
 
         for (int i = 0; i < TRAIL_SLOT_COUNT; i++) {
             int y = startY + i * 18;

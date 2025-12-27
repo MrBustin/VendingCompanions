@@ -41,6 +41,14 @@ public class ModNetworks {
 
         CHANNEL.registerMessage(
                 packetId++,
+                QuickEquipCompanionC2SPacket.class,
+                QuickEquipCompanionC2SPacket::toBytes,
+                QuickEquipCompanionC2SPacket::new,
+                QuickEquipCompanionC2SPacket::handle
+        );
+
+        CHANNEL.registerMessage(
+                packetId++,
                 SelectCompanionC2SPacket.class,
                 SelectCompanionC2SPacket::toBytes,
                 SelectCompanionC2SPacket::new,

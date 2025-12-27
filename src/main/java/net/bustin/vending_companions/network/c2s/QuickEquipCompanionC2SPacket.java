@@ -10,17 +10,17 @@ import net.minecraftforge.network.NetworkEvent;
 
 import java.util.function.Supplier;
 
-public class EquipCompanionC2SPacket {
+public class QuickEquipCompanionC2SPacket {
 
     private final BlockPos pos;
     private final int index;
 
-    public EquipCompanionC2SPacket(BlockPos pos, int index) {
+    public QuickEquipCompanionC2SPacket(BlockPos pos, int index) {
         this.pos = pos;
         this.index = index;
     }
 
-    public EquipCompanionC2SPacket(FriendlyByteBuf buf) {
+    public QuickEquipCompanionC2SPacket(FriendlyByteBuf buf) {
         this.pos = buf.readBlockPos();
         this.index = buf.readVarInt();
     }
@@ -46,7 +46,7 @@ public class EquipCompanionC2SPacket {
             }
 
             if (serverLevel.getBlockEntity(pos) instanceof CompanionVendingMachineBlockEntity be) {
-                be.equipCompanion(player, index,false);
+                be.equipCompanion(player, index,true);
             }
         });
         ctx.setPacketHandled(true);

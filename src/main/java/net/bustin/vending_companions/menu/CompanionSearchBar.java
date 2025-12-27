@@ -6,6 +6,8 @@ import iskallia.vault.core.vault.modifier.spi.VaultModifier;
 import iskallia.vault.item.CompanionItem;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
@@ -15,6 +17,18 @@ import java.util.*;
 public class CompanionSearchBar {
     private final EditBox box;
     private Runnable onChange = () -> {};
+
+    public List<Component> getTooltipLines() {
+        if (Screen.hasShiftDown()) {
+            return List.of(
+                    new TextComponent("'#' to search by Modifier"),
+                    new TextComponent("'>' to search Greater Than"),
+                    new TextComponent("'<' to search Less Than"),
+                    new TextComponent("'=' to search Exact Match")
+            );
+        }
+        return List.of(new TextComponent("Hold Shift for Filters"));
+    }
 
     public CompanionSearchBar(Font font, int x, int y, int w, int h) {
         this.box = new EditBox(font, x, y, w, h, TextComponent.EMPTY);

@@ -83,6 +83,20 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
         ItemStack held = pPlayer.getItemInHand(pHand);
 
+        // SHIFT + empty hand: pull companion from Curios head slot into locker
+        if (pPlayer.isShiftKeyDown() && held.isEmpty() && pPlayer instanceof ServerPlayer sp) {
+            boolean moved = locker.pullCompanionFromHeadCurio(sp);
+            if (moved) {
+                // optional feedback
+                pPlayer.displayClientMessage(
+                        new TextComponent("Stored your equipped companion.").withStyle(ChatFormatting.GREEN),
+                        true
+                );
+                return InteractionResult.CONSUME; // don't open GUI
+            }
+            return InteractionResult.PASS; // nothing to move
+        }
+
         // If holding a companion, add one to the locker and DON'T open GUI
         if (!held.isEmpty() && held.getItem() instanceof CompanionItem) {
             ItemStack toStore = held.copy();
@@ -93,6 +107,8 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
             return InteractionResult.CONSUME;
         }
+
+
 
         // Otherwise, open the GUI
         NetworkHooks.openGui((ServerPlayer) pPlayer, locker, pPos);
