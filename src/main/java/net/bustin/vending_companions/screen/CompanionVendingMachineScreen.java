@@ -133,6 +133,10 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
     private boolean draggingScrollbar = false;
     private int scrollbarGrabOffsetY = 0; // where inside the knob we grabbed (in screen pixels)
 
+    private int lastCompanionHash = 0;
+    private boolean companionsDirty = true;
+
+
     // -------------------------------------------------------------------
     // State / Layout
     // -------------------------------------------------------------------
@@ -329,6 +333,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         // Variant buttons depend on selection, so do it once at end
         rebuildVariantButtons();
 
+        companionsDirty = true;
+
         updateHealButtonState();
 
     }
@@ -339,6 +345,14 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
 
         if (this.searchBar != null) {
             this.searchBar.tick();
+        }
+
+
+        int h = computeCompanionHash();
+        if (companionsDirty || h != lastCompanionHash) {
+            companionsDirty = false;
+            lastCompanionHash = h;
+            refreshCompanionUi();
         }
 
 
@@ -1413,6 +1427,8 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         }
 
         this.init();
+        rebuildCompanionButtonsOnly();
+        rebuildFilteredList();
     }
 
     private void selectDefaultFromFiltered() {
@@ -1940,6 +1956,44 @@ public class CompanionVendingMachineScreen extends AbstractContainerScreen<Compa
         if (s.hasTag() && s.getTag().contains(FAV_TIME_TAG)) return s.getTag().getLong(FAV_TIME_TAG);
         return 0L;
     }
+
+    private int computeCompanionHash() {
+        int h = 1;
+        List<ItemStack> comps = this.menu.getCompanions();
+        for (ItemStack s : comps) {
+            if (s.isEmpty()) { h = 31 * h; continue; }
+
+            UUID id = CompanionItem.getCompanionUUID(s);
+            h = 31 * h + (id == null ? 0 : id.hashCode());
+
+            String type = CompanionItem.getPetType(s);
+            h = 31 * h + (type == null ? 0 : type.hashCode());
+
+            // include NBT that affects visuals (optional but helpful)
+            h = 31 * h + CompanionItem.getCompanionHearts(s);
+            h = 31 * h + CompanionItem.getCompanionLevel(s);
+        }
+        return h;
+    }
+
+    private void refreshCompanionUi() {
+        rebuildFilteredList();
+
+        // clamp scroll based on filtered size
+        int maxScrollRows = Math.max(0, filteredIndices.size() - VISIBLE_ROWS);
+        scrollRowOffset = Mth.clamp(scrollRowOffset, 0, maxScrollRows);
+
+        // ensure selection still valid
+        if (selectedIndex >= 0 && !filteredIndices.contains(selectedIndex)) {
+            selectedIndex = filteredIndices.isEmpty() ? -1 : filteredIndices.get(0);
+            menu.setSelectedIndex(selectedIndex);
+        }
+
+        rebuildCompanionButtonsOnly();
+        rebuildVariantButtons();
+        updateHealButtonState();
+    }
+
 }
 
 
