@@ -7,11 +7,9 @@ import com.mojang.datafixers.util.Pair;
 import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
 import iskallia.vault.core.vault.modifier.spi.VaultModifier;
 import iskallia.vault.item.CompanionItem;
-import net.bustin.vending_companions.VendingCompanions;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
-import net.bustin.vending_companions.network.ModNetworks;
-import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
-import net.bustin.vending_companions.screen.CompanionVendingMachineScreen;
+import net.bustin.vending_companions.screen.CompanionLockerScreen;
+import net.bustin.vending_companions.screen.CompanionLockerTextures;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiComponent;
@@ -19,7 +17,6 @@ import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.GameRenderer;
-import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
@@ -35,7 +32,7 @@ public class CompanionDisplayButton extends AbstractButton {
     private final ResourceLocation selectedTex;
     private final CompanionVendingMachineMenu menu;
     private final int companionIndex;
-    private final CompanionVendingMachineScreen parent;
+    private final CompanionLockerScreen parent;
 
     public QuickEquipButton quickEquipButton;
     public FavouriteButton favouriteButton;
@@ -46,16 +43,13 @@ public class CompanionDisplayButton extends AbstractButton {
 
     public final int baseY; // original Y before scroll
 
-    private static final ResourceLocation XP_BAR_TEX =
-            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar.png");
-
-    private static final ResourceLocation XP_BAR_FILL_TEX =
-            new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/companion_xp_bar_progress.png");
+    private static final ResourceLocation XP_BAR_TEX = CompanionLockerTextures.XP_BAR;
+    private static final ResourceLocation XP_BAR_FILL_TEX = CompanionLockerTextures.XP_BAR_FILL;
 
     public CompanionDisplayButton(int x, int y, int width, int height,ResourceLocation normalTex,
                                   ResourceLocation hoverTex, ResourceLocation selectedTex,
                                   CompanionVendingMachineMenu menu,
-                                  int companionIndex, CompanionVendingMachineScreen parent) {
+                                  int companionIndex, CompanionLockerScreen parent) {
         super(x, y, width, height, new TextComponent(""));
         this.normalTex = normalTex;
         this.hoverTex = hoverTex;
@@ -69,10 +63,10 @@ public class CompanionDisplayButton extends AbstractButton {
                 this,
                 100, 33,
                 18, 18,
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/quick_equip_button.png"),
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/quick_equip_button_highlighted.png"),
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/swap_button.png"),
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/swap_button_highlighted.png"),
+                CompanionLockerTextures.QUICK_EQUIP_BUTTON,
+                CompanionLockerTextures.QUICK_EQUIP_BUTTON_HOVER,
+                CompanionLockerTextures.SWAP_BUTTON,
+                CompanionLockerTextures.SWAP_BUTTON_HOVER,
                 () -> this.parent.quickEquipFromRow(this.companionIndex)
         );
 
@@ -80,10 +74,10 @@ public class CompanionDisplayButton extends AbstractButton {
                 this,
                 108, 4,
                 10,10,
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/favourite_button.png"),
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/favourite_button_highlighted.png"),
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/favourite_on_button.png"),
-                new ResourceLocation(VendingCompanions.MOD_ID, "textures/gui/favourite_on_button_highlighted.png")
+                CompanionLockerTextures.FAVOURITE_BUTTON,
+                CompanionLockerTextures.FAVOURITE_BUTTON_HOVER,
+                CompanionLockerTextures.FAVOURITE_ON_BUTTON,
+                CompanionLockerTextures.FAVOURITE_ON_BUTTON_HOVER
         );
     }
 
@@ -267,7 +261,7 @@ public class CompanionDisplayButton extends AbstractButton {
         int hearts    = CompanionItem.getCompanionHearts(stack);
         int maxHearts = CompanionItem.getCompanionMaxHearts(stack);
 
-        RenderSystem.setShaderTexture(0, GUI_ICONS_LOCATION);
+        RenderSystem.setShaderTexture(0, CompanionLockerTextures.GUI_ICONS);
         poseStack.pushPose();
         poseStack.translate(0, 0, 10);
 
@@ -317,10 +311,7 @@ public class CompanionDisplayButton extends AbstractButton {
         VaultModifier<?> modifier = modifierOpt.get(); // (unused right now, but fine)
 
         // 3) Texture path
-        ResourceLocation tex = new ResourceLocation(
-                VendingCompanions.MOD_ID,
-                "textures/gui/temporal_modifiers/" + temporalId.getPath() + ".png"
-        );
+        ResourceLocation tex = CompanionLockerTextures.temporalModifier(temporalId.getPath());
 
         int iconX = panelX + temporalIconOffX;
         int iconY = panelY + temporalIconOffY;
@@ -452,10 +443,7 @@ public class CompanionDisplayButton extends AbstractButton {
     private ResourceLocation getRelicModifierIconTex(ResourceLocation id) {
         String path = id.getPath();
 
-        return new ResourceLocation(
-                VendingCompanions.MOD_ID,
-                "textures/gui/modifiers/" + path + ".png"
-        );
+        return CompanionLockerTextures.modifier(path);
     }
 
     private boolean isSelected() {

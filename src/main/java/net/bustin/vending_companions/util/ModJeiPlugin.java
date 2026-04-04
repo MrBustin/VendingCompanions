@@ -4,7 +4,7 @@ import mezz.jei.api.IModPlugin;
 import mezz.jei.api.JeiPlugin;
 import mezz.jei.api.gui.handlers.IGuiContainerHandler;
 import mezz.jei.api.registration.IGuiHandlerRegistration;
-import net.bustin.vending_companions.screen.CompanionVendingMachineScreen;
+import net.bustin.vending_companions.screen.CompanionLockerScreen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.resources.ResourceLocation;
 
@@ -21,12 +21,12 @@ public class ModJeiPlugin implements IModPlugin {
     @Override
     public void registerGuiHandlers(IGuiHandlerRegistration reg) {
         reg.addGuiContainerHandler(
-                CompanionVendingMachineScreen.class,
-                new IGuiContainerHandler<CompanionVendingMachineScreen>() {
+                CompanionLockerScreen.class,
+                new IGuiContainerHandler<CompanionLockerScreen>() {
                     @Override
-                    public List<Rect2i> getGuiExtraAreas(CompanionVendingMachineScreen screen) {
+                    public List<Rect2i> getGuiExtraAreas(CompanionLockerScreen screen) {
                         // cover the whole screen => JEI hides overlay (including bookmarks)
-                        return List.of(new Rect2i(0, 0, screen.width, screen.height));
+                        return List.of(new Rect2i(0, 0, screen.fullWidth(), screen.fullHeight()));
                     }
                 }
         );

@@ -4,7 +4,7 @@ import net.bustin.vending_companions.blocks.ModBlocks;
 import net.bustin.vending_companions.blocks.custom.CompanionVendingMachineRenderer;
 import net.bustin.vending_companions.blocks.entity.ModBlockEntites;
 import net.bustin.vending_companions.menu.ModMenuTypes;
-import net.bustin.vending_companions.screen.CompanionVendingMachineScreen;
+import net.bustin.vending_companions.screen.CompanionLockerScreen;
 import net.minecraft.client.gui.screens.MenuScreens;
 import net.minecraft.client.renderer.ItemBlockRenderTypes;
 import net.minecraft.client.renderer.RenderType;
@@ -24,7 +24,7 @@ public class VendingCompanionsClient {
         event.enqueueWork(() -> {
             MenuScreens.register(
                     ModMenuTypes.COMPANION_VENDING_MACHINE_MENU.get(),
-                    CompanionVendingMachineScreen::new
+                    CompanionLockerScreen::new
             );
 
             ItemBlockRenderTypes.setRenderLayer(

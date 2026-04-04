@@ -3,9 +3,6 @@ package net.bustin.vending_companions.screen.buttons;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
-import net.bustin.vending_companions.blocks.entity.custom.CompanionVendingMachineBlockEntity;
-import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
-import net.bustin.vending_companions.screen.CompanionVendingMachineScreen;
 import net.minecraft.client.gui.components.AbstractButton;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.renderer.GameRenderer;
@@ -14,8 +11,6 @@ import net.minecraft.client.sounds.SoundManager;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.level.block.SoundType;
 
 public class HealButton extends AbstractButton {
 
