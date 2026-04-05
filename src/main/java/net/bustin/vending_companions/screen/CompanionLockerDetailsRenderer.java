@@ -5,6 +5,7 @@ import com.google.common.cache.CacheBuilder;
 import com.mojang.blaze3d.platform.Lighting;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import com.mojang.datafixers.util.Pair;
 import com.mojang.math.Quaternion;
 import com.mojang.math.Vector3f;
 import iskallia.vault.client.gui.framework.render.Tooltips;
@@ -37,10 +38,7 @@ import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Optional;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 
 final class CompanionLockerDetailsRenderer {
@@ -83,6 +81,7 @@ final class CompanionLockerDetailsRenderer {
 
         renderRelicSlotBackgrounds(poseStack);
         renderTrailSlotBackgrounds(poseStack);
+        renderAncientRelicSlotBackground(poseStack);
     }
 
     void renderCompanionDetails(PoseStack poseStack, int mouseX, int mouseY) {
@@ -105,9 +104,11 @@ final class CompanionLockerDetailsRenderer {
 
         renderCompanionName(poseStack, stack, panelX, panelY);
         renderCompanionHearts(poseStack, stack, panelX, panelY);
+        renderCompanionChallengeStacks(poseStack, stack, panelX, panelY, mouseX, mouseY);
         renderCompanionXpBar(poseStack, stack, panelX, panelY, mouseX, mouseY);
         renderCompanionStats(poseStack, stack, panelX, panelY);
         renderTemporalModifier(poseStack, stack, panelX, panelY, mouseX, mouseY);
+        renderModifiers(poseStack, stack, panelX, panelY, mouseX, mouseY);
     }
 
     void renderCompanionPreviewEntity(PoseStack poseStack, int mouseX, int mouseY) {
@@ -179,6 +180,26 @@ final class CompanionLockerDetailsRenderer {
         }
     }
 
+    private void renderAncientRelicSlotBackground(PoseStack poseStack){
+        int ancientRelicIndex = CompanionVendingMachineMenu.RELIC_SLOT_COUNT + CompanionVendingMachineMenu.TRAIL_SLOT_COUNT;
+
+        Slot slot = screen.menu().slots.get(ancientRelicIndex);
+        boolean unlocked = !(slot instanceof CompanionVendingMachineMenu.AncientRelicSlot ancientRelicSlot) || ancientRelicSlot.isUnlocked();
+        boolean filled = unlocked && slot.hasItem();
+
+        ResourceLocation texture;
+        if (!unlocked) {
+            texture = CompanionLockerTextures.RELIC_SLOT_LOCKED;
+        } else if (filled) {
+            texture = CompanionLockerTextures.RELIC_SLOT_FILLED;
+        } else {
+            texture = CompanionLockerTextures.RELIC_SLOT_UNLOCKED;
+        }
+
+        RenderSystem.setShaderTexture(0, texture);
+        GuiComponent.blit(poseStack, screen.leftPosValue() + slot.x - 1, screen.topPosValue() + slot.y - 1, 0, 0, 18, 18, 18, 18);
+    }
+
     private void renderCompanionName(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
         String name = CompanionItem.getPetName(stack);
         if (name == null || name.isEmpty()) {
@@ -239,6 +260,153 @@ final class CompanionLockerDetailsRenderer {
             tooltip.add(new TextComponent(modifier.getDisplayName()).withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
             tooltip.add(new TextComponent("Duration: " + UIHelper.formatTimeString(CompanionItem.getTemporalDuration(stack))).withStyle(ChatFormatting.WHITE));
             screen.showComponentTooltip(poseStack, tooltip, mouseX, mouseY);
+        }
+    }
+
+    private void renderModifiers(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
+        Map<ResourceLocation, Integer> counts = collectModifierCounts(stack);
+        List<ResourceLocation> ordered = new ArrayList<>();
+        for (ResourceLocation id : counts.keySet()) {
+            if (!"companion_challenge".equals(id.getPath())) {
+                ordered.add(id);
+            }
+        }
+
+        if (ordered.isEmpty()) {
+            return;
+        }
+
+        final int iconSize = 10;
+        final int spacing = 2;
+        final int columns = 4;
+
+        int baseX = panelX + screen.modifierIconsOffX();
+        int baseY = panelY + screen.modifierIconsOffY();
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+
+        for (int i = 0; i < ordered.size(); i++) {
+            ResourceLocation id = ordered.get(i);
+            int col = i % columns;
+            int row = i / columns;
+            int x = baseX + col * (iconSize + spacing);
+            int y = baseY + row * (iconSize + spacing);
+
+            renderModifierIcon(poseStack, mouseX, mouseY, counts, id, iconSize, x, y);
+        }
+
+        RenderSystem.disableBlend();
+    }
+
+    private void renderCompanionChallengeStacks(PoseStack poseStack, ItemStack stack, int panelX, int panelY, int mouseX, int mouseY) {
+        Map<ResourceLocation, Integer> counts = collectModifierCounts(stack);
+        List<ResourceLocation> challengeIds = new ArrayList<>();
+        for (ResourceLocation id : counts.keySet()) {
+            if ("companion_challenge".equals(id.getPath())) {
+                challengeIds.add(id);
+            }
+        }
+
+        if (challengeIds.isEmpty()) {
+            return;
+        }
+
+        final int iconSize = 8;
+        final int spacing = 2;
+        final int columns = 4;
+
+        int baseX = panelX + screen.heartsOffX();
+        int baseY = panelY + screen.heartsOffY() + 12;
+
+        RenderSystem.setShader(GameRenderer::getPositionTexShader);
+        RenderSystem.enableBlend();
+        RenderSystem.defaultBlendFunc();
+        RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
+
+        for (int i = 0; i < challengeIds.size(); i++) {
+            ResourceLocation id = challengeIds.get(i);
+            int col = i % columns;
+            int row = i / columns;
+            int x = baseX + col * (iconSize + spacing);
+            int y = baseY + row * (iconSize + spacing);
+
+            renderModifierIcon(poseStack, mouseX, mouseY, counts, id, iconSize, x, y);
+        }
+
+        RenderSystem.disableBlend();
+    }
+
+    private Map<ResourceLocation, Integer> collectModifierCounts(ItemStack stack) {
+        Map<ResourceLocation, Integer> counts = new LinkedHashMap<>();
+
+        Map<Integer, Pair<Integer, List<ResourceLocation>>> relicMap = CompanionItem.getAllRelics(stack);
+        if (relicMap != null && !relicMap.isEmpty()) {
+            for (Pair<Integer, List<ResourceLocation>> entry : relicMap.values()) {
+                if (entry == null || entry.getSecond() == null) {
+                    continue;
+                }
+
+                for (ResourceLocation id : entry.getSecond()) {
+                    if (id != null) {
+                        counts.merge(id, 1, Integer::sum);
+                    }
+                }
+            }
+        }
+
+        CompanionItem.getAncientRelic(stack).ifPresent(ancientRelic -> {
+            List<ResourceLocation> modifiers = ancientRelic.getSecond();
+            if (modifiers == null) {
+                return;
+            }
+
+            for (ResourceLocation id : modifiers) {
+                if (id != null) {
+                    counts.merge(id, 1, Integer::sum);
+                }
+            }
+        });
+
+        return counts;
+    }
+
+    private void renderModifierIcon(PoseStack poseStack, int mouseX, int mouseY, Map<ResourceLocation, Integer> counts, ResourceLocation id, int iconSize, int x, int y) {
+        ResourceLocation texture = getRelicModifierIconTex(id);
+        RenderSystem.setShaderTexture(0, texture);
+        GuiComponent.blit(poseStack, x, y, 0, 0, iconSize, iconSize, iconSize, iconSize);
+
+        int count = counts.getOrDefault(id, 1);
+        if (count > 1) {
+            String label = "x" + count;
+            float textScale = 0.75f;
+            int tx = x + iconSize - (int) (screen.fontRenderer().width(label) * textScale) + 1;
+            int ty = y + iconSize - (int) (8 * textScale) + 1;
+
+            poseStack.pushPose();
+            poseStack.translate(tx, ty, 300);
+            poseStack.scale(textScale, textScale, 1.0f);
+            screen.fontRenderer().drawShadow(poseStack, label, 0, 0, 0xFFFFFF);
+            poseStack.popPose();
+        }
+
+        if (mouseX >= x && mouseX <= x + iconSize && mouseY >= y && mouseY <= y + iconSize) {
+            List<Component> tooltip = new ArrayList<>();
+            Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(id);
+            if (modifierOpt.isPresent()) {
+                VaultModifier<?> modifier = modifierOpt.get();
+                tooltip.add(new TextComponent(modifier.getDisplayName()).withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
+            } else {
+                tooltip.add(new TextComponent(id.getPath()));
+            }
+
+            if (count > 1) {
+                tooltip.add(new TextComponent("Count: " + count).withStyle(ChatFormatting.GRAY));
+            }
+
+            screen.queuePriorityTooltip(tooltip, mouseX, mouseY);
         }
     }
 
@@ -437,5 +605,11 @@ final class CompanionLockerDetailsRenderer {
         modelViewStack.popPose();
         RenderSystem.applyModelViewMatrix();
         Lighting.setupFor3DItems();
+    }
+
+    private ResourceLocation getRelicModifierIconTex(ResourceLocation id) {
+        String path = id.getPath();
+
+        return CompanionLockerTextures.modifier(path);
     }
 }

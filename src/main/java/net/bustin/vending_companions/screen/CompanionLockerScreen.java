@@ -55,11 +55,14 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
     private int selectedIndex = -1;
 
     private CompanionSearchBar searchBar;
+    private List<Component> queuedPriorityTooltip;
+    private int queuedPriorityTooltipMouseX;
+    private int queuedPriorityTooltipMouseY;
 
     private int relicSlotOffX = 106;
     private int relicSlotOffY = 92;
     private int trailSlotOffX = 207;
-    private int trailSlotOffY = 111;
+    private int trailSlotOffY = 93;
     private int nameOffX = 0;
     private int nameOffY = 7;
     private int heartsOffX = 16;
@@ -73,7 +76,9 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
     private int previewWidth = 80;
     private int previewHeight = 120;
     private int temporalIconOffX = 117;
-    private int temporalIconOffY = 60;
+    private int temporalIconOffY = 30;
+    private int modifierIconsOffX = 111;
+    private int modifierIconsOffY = 65;
 
     public CompanionLockerScreen(CompanionVendingMachineMenu menu, Inventory inventory, Component title) {
         super(menu, inventory, title);
@@ -154,6 +159,7 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
     @Override
     public void render(PoseStack poseStack, int mouseX, int mouseY, float delta) {
         this.renderBackground(poseStack);
+        clearPriorityTooltip();
 
         boolean healWasVisible = healButton != null && healButton.visible;
         if (healButton != null) {
@@ -181,6 +187,7 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
 
         variantPanel.renderClippedButtons(poseStack, mouseX, mouseY, delta);
         renderHoverTooltips(poseStack, mouseX, mouseY);
+        renderPriorityTooltip(poseStack);
     }
 
     @Override
@@ -196,6 +203,11 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
             return;
         }
 
+        if (hoveredSlot instanceof CompanionVendingMachineMenu.AncientRelicSlot ancientRelicSlot && !ancientRelicSlot.isUnlocked()) {
+            this.renderComponentTooltip(poseStack, ancientRelicSlot.getUnlockTooltip(), mouseX, mouseY);
+            return;
+        }
+
         if (hoveredSlot instanceof CompanionVendingMachineMenu.TrailSlot trailSlot && !trailSlot.isUnlocked()) {
             this.renderComponentTooltip(poseStack, trailSlot.getUnlockTooltip(), mouseX, mouseY);
             return;
@@ -208,7 +220,8 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
     public List<Component> getTooltipFromItem(ItemStack stack) {
         List<Component> tooltip = super.getTooltipFromItem(stack);
 
-        if (hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot && relicSlot.isUnlocked() && relicSlot.hasItem()) {
+        if ((hoveredSlot instanceof CompanionVendingMachineMenu.RelicSlot relicSlot && relicSlot.isUnlocked() && relicSlot.hasItem())
+                || (hoveredSlot instanceof CompanionVendingMachineMenu.AncientRelicSlot ancientRelicSlot && ancientRelicSlot.isUnlocked() && ancientRelicSlot.hasItem())) {
             tooltip.add(TextComponent.EMPTY);
 
             ItemStack selectedCompanion = selectedIndex >= 0 ? menu.getCompanion(selectedIndex) : ItemStack.EMPTY;
@@ -412,6 +425,12 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
         this.renderComponentTooltip(poseStack, tooltip, mouseX, mouseY);
     }
 
+    void queuePriorityTooltip(List<Component> tooltip, int mouseX, int mouseY) {
+        this.queuedPriorityTooltip = tooltip;
+        this.queuedPriorityTooltipMouseX = mouseX;
+        this.queuedPriorityTooltipMouseY = mouseY;
+    }
+
     Font fontRenderer() {
         return this.font;
     }
@@ -528,6 +547,14 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
         return temporalIconOffY;
     }
 
+    int modifierIconsOffX(){
+        return modifierIconsOffX;
+    }
+
+    int modifierIconsOffY(){
+        return modifierIconsOffY;
+    }
+
     int widthValue() {
         return this.width;
     }
@@ -570,6 +597,19 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
 
     void removeControl(GuiEventListener widget) {
         this.removeWidget(widget);
+    }
+
+    private void clearPriorityTooltip() {
+        this.queuedPriorityTooltip = null;
+    }
+
+    private void renderPriorityTooltip(PoseStack poseStack) {
+        if (this.queuedPriorityTooltip == null || this.queuedPriorityTooltip.isEmpty()) {
+            return;
+        }
+
+        this.renderComponentTooltip(poseStack, this.queuedPriorityTooltip, this.queuedPriorityTooltipMouseX, this.queuedPriorityTooltipMouseY);
+        this.queuedPriorityTooltip = null;
     }
 
     private void initLabels() {

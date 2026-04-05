@@ -228,6 +228,11 @@ final class CompanionLockerListController {
                 return true;
             }
         }
+        if (button == 0 && CompanionLockerScreen.hasShiftDown() && hoveredSlot instanceof CompanionVendingMachineMenu.AncientRelicSlot ancientRelicSlot) {
+            if (ancientRelicSlot.isUnlocked() && ancientRelicSlot.hasItem() && !screen.hasEnoughVaultGoldForHoveredRelicRemoval()) {
+                return true;
+            }
+        }
 
         if (button == 1) {
             EditBox searchWidget = screen.searchBar() == null ? null : screen.searchBar().widget();

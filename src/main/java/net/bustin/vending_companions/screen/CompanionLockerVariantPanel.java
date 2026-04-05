@@ -3,6 +3,7 @@ package net.bustin.vending_companions.screen;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import iskallia.vault.entity.entity.pet.PetHelper;
+import iskallia.vault.entity.entity.pet.PetModelType;
 import iskallia.vault.item.CompanionItem;
 import iskallia.vault.item.CompanionSeries;
 import net.bustin.vending_companions.network.ModNetworks;
@@ -16,6 +17,7 @@ import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.Mth;
 import net.minecraft.world.item.ItemStack;
 
@@ -113,7 +115,7 @@ final class CompanionLockerVariantPanel {
         int baseY = screen.detailsY() + 5;
 
         if (series == CompanionSeries.PET) {
-            PetHelper.PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
+            PetModelType modelType = PetHelper.getModel(currentType).orElse(null);
             if (modelType == null) {
                 return;
             }
@@ -129,15 +131,29 @@ final class CompanionLockerVariantPanel {
                 ItemStack icon = baseStack.copy();
                 CompanionItem.setPetType(icon, type);
 
-                Button button = new VariantItemButton(
-                        baseX,
-                        baseY + i * 20,
-                        20,
-                        20,
-                        icon,
-                        new TextComponent(variant.displayName()),
-                        ignored -> changeVariant(type)
-                );
+                Component tooltip = new TextComponent(variant.displayName());
+                Button button;
+                if (hasRenderableAssets(minecraft, variant)) {
+                    button = new VariantItemButton(
+                            baseX,
+                            baseY + i * 20,
+                            20,
+                            20,
+                            icon,
+                            tooltip,
+                            ignored -> changeVariant(type)
+                    );
+                } else {
+                    button = new VariantTextButton(
+                            baseX,
+                            baseY + i * 20,
+                            20,
+                            20,
+                            new TextComponent(variant.displayName().substring(0, 1).toUpperCase()),
+                            tooltip,
+                            ignored -> changeVariant(type)
+                    );
+                }
                 variantButtons.add(button);
                 screen.addControl(button);
             }
@@ -314,6 +330,17 @@ final class CompanionLockerVariantPanel {
             screen.removeControl(button);
         }
         variantButtons.clear();
+    }
+
+    private boolean hasRenderableAssets(Minecraft minecraft, PetHelper.PetVariant variant) {
+        PetHelper.PetRenderData renderData = variant.renderData();
+        return hasResource(minecraft, renderData.modelLocation())
+                && hasResource(minecraft, renderData.textureLocation())
+                && hasResource(minecraft, renderData.animationLocation());
+    }
+
+    private boolean hasResource(Minecraft minecraft, ResourceLocation location) {
+        return minecraft.getResourceManager().hasResource(location);
     }
 
     private void enableVerticalOnlyScissor(int seamGuiX) {

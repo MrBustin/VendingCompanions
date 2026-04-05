@@ -1,8 +1,10 @@
 package net.bustin.vending_companions.menu;
 
 
+import com.mojang.datafixers.util.Pair;
 import iskallia.vault.init.ModConfigs;
 import iskallia.vault.init.ModItems;
+import iskallia.vault.init.ModSlotIcons;
 import iskallia.vault.item.CompanionItem;
 import iskallia.vault.item.CompanionParticleTrailItem;
 import iskallia.vault.item.CompanionRelicItem;
@@ -21,16 +23,10 @@ import net.minecraft.world.Container;
 import net.minecraft.world.SimpleContainer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
-import net.minecraft.world.inventory.AbstractContainerMenu;
-import net.minecraft.world.inventory.ClickType;
-import net.minecraft.world.inventory.ContainerLevelAccess;
-import net.minecraft.world.inventory.Slot;
+import net.minecraft.world.inventory.*;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
-import net.minecraftforge.items.CapabilityItemHandler;
-import net.minecraftforge.items.IItemHandler;
-import net.minecraftforge.items.ItemStackHandler;
-import net.minecraftforge.items.SlotItemHandler;
+import org.jetbrains.annotations.Nullable;
 
 
 import java.util.ArrayList;
@@ -41,6 +37,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
     public static final int RELIC_SLOT_COUNT = 4;
     public static final int TRAIL_SLOT_COUNT = 3;
+    public static final int ANCIENT_RELIC_SLOT_COUNT = 1;
 
     private final CompanionVendingMachineBlockEntity blockEntity;
     private final Level level;
@@ -49,6 +46,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     // internal GUI inventories for relic/trail slots
     private final SimpleContainer relicContainer = new SimpleContainer(RELIC_SLOT_COUNT);
     private final SimpleContainer trailContainer = new SimpleContainer(TRAIL_SLOT_COUNT);
+    private final SimpleContainer ancientRelicContainer = new SimpleContainer(ANCIENT_RELIC_SLOT_COUNT);
 
 
     // currently selected companion in the locker (LIVE reference)
@@ -78,6 +76,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         // slots: relics + trails + player inv + hotbar
         addRelicSlots();
         addTrailSlots();
+        addAnchientRelicSlot();
         addSnackSlot();
         addPlayerInventory(inv);
         addPlayerHotbar(inv);
@@ -128,6 +127,9 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         for (int i = 0; i < trailContainer.getContainerSize(); i++) {
             trailContainer.setItem(i, ItemStack.EMPTY);
         }
+        for (int i = 0; i < ancientRelicContainer.getContainerSize(); i++) {
+            ancientRelicContainer.setItem(i, ItemStack.EMPTY);
+        }
 
         if (!(companionStack.getItem() instanceof CompanionItem)) {
             return;
@@ -152,6 +154,10 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
                 }
             }
         }
+
+        CompanionItem.getAncientRelic(companionStack).ifPresent(mods ->
+                ancientRelicContainer.setItem(0, CompanionRelicItem.create(mods))
+        );
     }
 
     // ---------- slots ----------
@@ -168,12 +174,19 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
     private void addTrailSlots() {
         int startX = 207; // must match trailSlotOffX in screen
-        int startY = 111;  // must match trailSlotOffY
+        int startY = 93;  // must match trailSlotOffY
 
         for (int i = 0; i < TRAIL_SLOT_COUNT; i++) {
             int y = startY + i * 18;
             this.addSlot(new TrailSlot(trailContainer, i, startX, y));
         }
+    }
+
+    private void addAnchientRelicSlot() {
+        int X = 207;
+        int Y = 147;
+        this.addSlot(new AncientRelicSlot(ancientRelicContainer, 0, X, Y));
+
     }
 
     private void addSnackSlot() {
@@ -216,20 +229,13 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         if (slot instanceof RelicSlot relicSlot) {
             if (!relicSlot.isUnlocked()) return ItemStack.EMPTY;
             if (CompanionItem.getCompanionHearts(companionStack) <= 0) return ItemStack.EMPTY;
+            if (!chargeRelicRemovalCost(player)) return ItemStack.EMPTY;
+        }
 
-            int cost = ModConfigs.COMPANIONS.getRelicRemovalCost();
-
-            if (!player.level.isClientSide) {
-                List<InventoryUtil.ItemAccess> allItems = InventoryUtil.findAllItems(player);
-                ItemStack currency = new ItemStack(iskallia.vault.init.ModBlocks.VAULT_GOLD, cost);
-
-                if (!CoinDefinition.hasEnoughCurrency(allItems, currency)) {
-                    return ItemStack.EMPTY;
-                }
-
-                // pouch-aware removal (exactly what VH does)
-                CoinDefinition.extractCurrency(player, allItems, currency);
-            }
+        if (slot instanceof AncientRelicSlot ancientRelicSlot) {
+            if (!ancientRelicSlot.isUnlocked()) return ItemStack.EMPTY;
+            if (CompanionItem.getCompanionHearts(companionStack) <= 0) return ItemStack.EMPTY;
+            if (!chargeRelicRemovalCost(player)) return ItemStack.EMPTY;
         }
 
         ItemStack ret = ItemStack.EMPTY;
@@ -238,8 +244,9 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             ItemStack stackInSlot = slot.getItem();
             ret = stackInSlot.copy();
 
-            int machineSlots = RELIC_SLOT_COUNT + TRAIL_SLOT_COUNT + 1; // + snack = 8
-            int snackSlotIndex = RELIC_SLOT_COUNT + TRAIL_SLOT_COUNT;   // 7
+            int ancientRelicSlotIndex = RELIC_SLOT_COUNT + TRAIL_SLOT_COUNT;
+            int snackSlotIndex = ancientRelicSlotIndex + ANCIENT_RELIC_SLOT_COUNT;
+            int machineSlots = snackSlotIndex + 1;
 
             if (index < machineSlots) {
                 // from machine → player
@@ -249,7 +256,11 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             } else {
                 // from player → machine
                 if (stackInSlot.getItem() instanceof CompanionRelicItem) {
-                    if (!this.moveItemStackTo(stackInSlot, 0, RELIC_SLOT_COUNT, false)) {
+                    if (CompanionRelicItem.isAncient(stackInSlot)) {
+                        if (!this.moveItemStackTo(stackInSlot, ancientRelicSlotIndex, ancientRelicSlotIndex + 1, false)) {
+                            return ItemStack.EMPTY;
+                        }
+                    } else if (!this.moveItemStackTo(stackInSlot, 0, RELIC_SLOT_COUNT, false)) {
                         return ItemStack.EMPTY;
                     }
                 } else if (stackInSlot.getItem() instanceof CompanionParticleTrailItem) {
@@ -407,7 +418,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         if (slotId >= 0 && slotId < this.slots.size()) {
             Slot slot = this.slots.get(slotId);
 
-            if (slot instanceof RelicSlot) {
+            if (slot instanceof RelicSlot || slot instanceof AncientRelicSlot) {
                 // Allow shift-click removal (this is where we charge in quickMoveStack)
                 if (clickType == ClickType.QUICK_MOVE) {
                     super.clicked(slotId, dragType, clickType, player);
@@ -428,6 +439,24 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         }
 
         super.clicked(slotId, dragType, clickType, player);
+    }
+
+    private boolean chargeRelicRemovalCost(Player player) {
+        int cost = ModConfigs.COMPANIONS.getRelicRemovalCost();
+
+        if (!player.level.isClientSide) {
+            List<InventoryUtil.ItemAccess> allItems = InventoryUtil.findAllItems(player);
+            ItemStack currency = new ItemStack(iskallia.vault.init.ModBlocks.VAULT_GOLD, cost);
+
+            if (!CoinDefinition.hasEnoughCurrency(allItems, currency)) {
+                return false;
+            }
+
+            // pouch-aware removal (exactly what VH does)
+            CoinDefinition.extractCurrency(player, allItems, currency);
+        }
+
+        return true;
     }
 
 
@@ -495,15 +524,83 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             int levelReq;
             switch (this.relicIndex) {
                 case 0 -> levelReq = 2;
-                case 1 -> levelReq = 5;
-                case 2 -> levelReq = 8;
-                default -> levelReq = 10;
+                case 1 -> levelReq = 4;
+                case 2 -> levelReq = 7;
+                default -> levelReq = 9;
             }
 
             List<Component> tooltip = new ArrayList<>();
             tooltip.add(new TextComponent("Locked Relic Slot").withStyle(ChatFormatting.RED));
             tooltip.add(new TextComponent("Unlocks at level " + levelReq).withStyle(ChatFormatting.GRAY));
             return tooltip;
+        }
+        public @Nullable Pair<ResourceLocation, ResourceLocation> getNoItemIcon() {
+            return !this.isUnlocked() ? null : Pair.of(InventoryMenu.BLOCK_ATLAS, ModSlotIcons.COMPANION_RELIC_SLOTS);
+        }
+    }
+
+    public class AncientRelicSlot extends Slot {
+
+        public AncientRelicSlot(Container inv, int index, int x, int y) {
+            super(inv, index, x, y);
+        }
+
+        public boolean isUnlocked() {
+            return companionStack.getItem() instanceof CompanionItem
+                    && CompanionItem.getAncientRelicSlots(companionStack) > 0;
+        }
+
+        @Override
+        public boolean mayPlace(ItemStack stack) {
+            return this.isUnlocked()
+                    && stack.getItem() instanceof CompanionRelicItem
+                    && CompanionRelicItem.isAncient(stack)
+                    && !this.hasItem()
+                    && CompanionItem.getCompanionHearts(companionStack) > 0;
+        }
+
+        @Override
+        public boolean mayPickup(Player player) {
+            return this.isUnlocked()
+                    && this.hasItem()
+                    && CompanionItem.getCompanionHearts(companionStack) > 0;
+        }
+
+        @Override
+        public void setChanged() {
+            super.setChanged();
+
+            if (!(companionStack.getItem() instanceof CompanionItem)) {
+                return;
+            }
+
+            ItemStack stack = this.getItem();
+            if (stack.isEmpty()) {
+                CompanionItem.setAncientRelic(companionStack, 0, Collections.emptyList());
+            } else {
+                List<ResourceLocation> mods = CompanionRelicItem.getModifiers(stack);
+                CompanionItem.setAncientRelic(
+                        companionStack,
+                        CompanionRelicItem.getModel(stack),
+                        mods
+                );
+            }
+
+            blockEntity.setChanged();
+            if (!level.isClientSide) {
+                level.sendBlockUpdated(blockPos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
+            }
+        }
+
+        //tooltip for locked slots
+        public List<Component> getUnlockTooltip() {
+            List<Component> tooltip = new ArrayList();
+            tooltip.add((new TextComponent("Locked Ancient Relic Slot")).withStyle(ChatFormatting.RED));
+            tooltip.add((new TextComponent("Unlocks at level 10")).withStyle(ChatFormatting.GRAY));
+            return tooltip;
+        }
+        public @Nullable Pair<ResourceLocation, ResourceLocation> getNoItemIcon() {
+            return !this.isUnlocked() ? null : Pair.of(InventoryMenu.BLOCK_ATLAS, ModSlotIcons.COMPANION_ANCIENT_RELIC_SLOT);
         }
     }
 
@@ -530,8 +627,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
         @Override
         public boolean mayPickup(Player player) {
-            // VH behaviour would be: return this.isUnlocked() && this.hasItem() && player.isShiftKeyDown();
-            return this.isUnlocked() && this.hasItem();
+            return this.isUnlocked() && this.hasItem() && player.isShiftKeyDown();
         }
 
         @Override
@@ -565,7 +661,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             }
         }
 
-        // 🔒 NEW: tooltip for locked particle slots
+        //tooltip for locked particle slots
         public List<Component> getUnlockTooltip() {
             int levelReq;
             switch (this.trailIndex) {
@@ -578,6 +674,9 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             tooltip.add(new TextComponent("Locked Particle Slot").withStyle(ChatFormatting.RED));
             tooltip.add(new TextComponent("Unlocks at level " + levelReq).withStyle(ChatFormatting.GRAY));
             return tooltip;
+        }
+        public @Nullable Pair<ResourceLocation, ResourceLocation> getNoItemIcon() {
+            return !this.isUnlocked() ? null : Pair.of(InventoryMenu.BLOCK_ATLAS, ModSlotIcons.COMPANION_TRAIL_NO_ITEM);
         }
     }
 

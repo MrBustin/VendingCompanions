@@ -8,11 +8,10 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.TextComponent;
 import net.minecraft.world.item.ItemStack;
 
-
-
 public class VariantItemButton extends Button {
     private final ItemStack icon;
     private final Component tooltip;
+    private boolean renderFailed = false;
 
     public VariantItemButton(int x, int y, int w, int h, ItemStack icon, Component tooltip, OnPress onPress) {
         super(x, y, w, h, TextComponent.EMPTY, onPress);
@@ -28,7 +27,9 @@ public class VariantItemButton extends Button {
     public void renderButton(PoseStack poseStack, int mouseX, int mouseY, float partialTick) {
         super.renderButton(poseStack, mouseX, mouseY, partialTick);
 
-        if (icon.isEmpty()) return;
+        if (icon.isEmpty() || renderFailed) {
+            return;
+        }
 
         Minecraft mc = Minecraft.getInstance();
         int ix = this.x + (this.width - 16) / 2;
@@ -40,14 +41,16 @@ public class VariantItemButton extends Button {
         float oldBlit = mc.getItemRenderer().blitOffset;
         mc.getItemRenderer().blitOffset = 500.0F;
 
-        RenderSystem.enableDepthTest();
-        mc.getItemRenderer().renderAndDecorateItem(icon, ix, iy);
-        mc.getItemRenderer().renderGuiItemDecorations(mc.font, icon, ix, iy);
-        RenderSystem.disableDepthTest(); // ✅ IMPORTANT
-
-        mc.getItemRenderer().blitOffset = oldBlit;
-        poseStack.popPose();
+        try {
+            RenderSystem.enableDepthTest();
+            mc.getItemRenderer().renderAndDecorateItem(icon, ix, iy);
+            mc.getItemRenderer().renderGuiItemDecorations(mc.font, icon, ix, iy);
+        } catch (RuntimeException ignored) {
+            renderFailed = true;
+        } finally {
+            RenderSystem.disableDepthTest();
+            mc.getItemRenderer().blitOffset = oldBlit;
+            poseStack.popPose();
+        }
     }
-
-
 }

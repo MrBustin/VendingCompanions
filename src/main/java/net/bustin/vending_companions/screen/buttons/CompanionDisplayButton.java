@@ -366,6 +366,13 @@ public class CompanionDisplayButton extends AbstractButton {
             }
         }
 
+        CompanionItem.getAncientRelic(stack).ifPresent(ancientRelic -> {
+            List<ResourceLocation> list = ancientRelic.getSecond();
+            if (list != null && !list.isEmpty()) {
+                ids.addAll(list);
+            }
+        });
+
         if (ids.isEmpty()) return;
 
         // --- count duplicates (preserve order) ---
@@ -385,7 +392,6 @@ public class CompanionDisplayButton extends AbstractButton {
         // --- compute scale so everything fits on one line ---
         // start beside temporal (if temporal is present)
         int startX = panelX + baseOffX + (hasTemporal ? (int)(srcSize * maxScale) + padPx : 0);
-        int y = panelY + baseOffY;
 
         int iconCount = unique.size();
         int availableW = rightEdge - startX;
@@ -396,46 +402,74 @@ public class CompanionDisplayButton extends AbstractButton {
         float scale = Math.min(maxScale, (float) availableW / (float) requiredW);
         if (scale < minScale) scale = minScale;
 
+        boolean splitRows = iconCount >= 5;
+
+        List<List<ResourceLocation>> rows = new ArrayList<>();
+        if (splitRows) {
+            rows.add(new ArrayList<>(unique.subList(0, Math.min(5, unique.size()))));
+            if (unique.size() > 5) {
+                rows.add(new ArrayList<>(unique.subList(5, unique.size())));
+            }
+
+            int widestRowCount = 0;
+            for (List<ResourceLocation> row : rows) {
+                widestRowCount = Math.max(widestRowCount, row.size());
+            }
+
+            int splitRequiredW = widestRowCount * srcSize + Math.max(0, widestRowCount - 1) * padPx;
+            scale = Math.min(maxScale, (float) availableW / (float) splitRequiredW);
+            if (scale < minScale) scale = minScale;
+        } else {
+            rows.add(unique);
+        }
+
         int iconW = (int)(srcSize * scale);
         int iconH = (int)(srcSize * scale);
+        int startY = panelY + baseOffY;
+        if (splitRows) {
+            startY -= (iconH + padPx) / 2;
+        }
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.enableBlend();
         RenderSystem.defaultBlendFunc();
         RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
 
-        int x = startX;
+        for (int rowIndex = 0; rowIndex < rows.size(); rowIndex++) {
+            int x = startX;
+            int y = startY + rowIndex * (iconH + padPx);
 
-        for (ResourceLocation id : unique) {
-            int count = counts.getOrDefault(id, 1);
-            ResourceLocation tex = getRelicModifierIconTex(id); // your mapping hook
+            for (ResourceLocation id : rows.get(rowIndex)) {
+                int count = counts.getOrDefault(id, 1);
+                ResourceLocation tex = getRelicModifierIconTex(id); // your mapping hook
 
-            // icon
-            poseStack.pushPose();
-            poseStack.translate(x, y, 200);
-            poseStack.scale(scale, scale, 1.0f);
-
-            RenderSystem.setShaderTexture(0, tex);
-            GuiComponent.blit(poseStack, 0, 0, 0, 0, srcSize, srcSize, srcSize, srcSize);
-
-            poseStack.popPose();
-
-            // xN overlay (half size, bottom-right, transparent bg)
-            if (count > 1) {
-                String s = "x" + count;
-                float textScale = 0.75f;
-
-                int tx = x + iconW - (int)(this.font.width(s) * textScale) + 1;
-                int ty = y + iconH - (int)(8 * textScale) + 1;
-
+                // icon
                 poseStack.pushPose();
-                poseStack.translate(tx, ty, 300);
-                poseStack.scale(textScale, textScale, 1.0f);
-                this.font.drawShadow(poseStack, s, 0, 0, 0xFFFFFF);
-                poseStack.popPose();
-            }
+                poseStack.translate(x, y, 200);
+                poseStack.scale(scale, scale, 1.0f);
 
-            x += iconW + padPx;
+                RenderSystem.setShaderTexture(0, tex);
+                GuiComponent.blit(poseStack, 0, 0, 0, 0, srcSize, srcSize, srcSize, srcSize);
+
+                poseStack.popPose();
+
+                // xN overlay (half size, bottom-right, transparent bg)
+                if (count > 1) {
+                    String s = "x" + count;
+                    float textScale = 0.75f;
+
+                    int tx = x + iconW - (int)(this.font.width(s) * textScale) + 1;
+                    int ty = y + iconH - (int)(8 * textScale) + 1;
+
+                    poseStack.pushPose();
+                    poseStack.translate(tx, ty, 300);
+                    poseStack.scale(textScale, textScale, 1.0f);
+                    this.font.drawShadow(poseStack, s, 0, 0, 0xFFFFFF);
+                    poseStack.popPose();
+                }
+
+                x += iconW + padPx;
+            }
         }
 
         RenderSystem.disableBlend();
