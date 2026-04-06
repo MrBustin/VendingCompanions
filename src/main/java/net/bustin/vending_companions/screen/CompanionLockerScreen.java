@@ -390,7 +390,7 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
     }
 
     public boolean needsHealing(ItemStack stack) {
-        return CompanionItem.getCompanionHearts(stack) != CompanionItem.getCompanionMaxHearts(stack);
+        return CompanionItem.getCompanionHearts(stack) != CompanionItem.getCompanionMaxHearts(stack) && CompanionItem.getCompanionHearts(stack) >= 1;
     }
 
     public boolean hasSnacks() {
