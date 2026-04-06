@@ -45,6 +45,7 @@ public class CompanionDisplayButton extends AbstractButton {
 
     private static final ResourceLocation XP_BAR_TEX = CompanionLockerTextures.XP_BAR;
     private static final ResourceLocation XP_BAR_FILL_TEX = CompanionLockerTextures.XP_BAR_FILL;
+    private static final int MAX_MODIFIER_ICONS_PER_ROW_AT_MIN_SCALE = 5;
 
     public CompanionDisplayButton(int x, int y, int width, int height,ResourceLocation normalTex,
                                   ResourceLocation hoverTex, ResourceLocation selectedTex,
@@ -348,7 +349,7 @@ public class CompanionDisplayButton extends AbstractButton {
         final int srcSize = 16;
         final int padPx = 2;
         final float maxScale = 0.75f;
-        final float minScale = 0.45f;
+        final float minScale = 0.5f;
 
         final int buttonW = 122;
         final int rightEdge = panelX + buttonW - 3;
@@ -402,23 +403,16 @@ public class CompanionDisplayButton extends AbstractButton {
         float scale = Math.min(maxScale, (float) availableW / (float) requiredW);
         if (scale < minScale) scale = minScale;
 
-        boolean splitRows = iconCount >= 5;
+        boolean splitRows = scale <= minScale || iconCount > MAX_MODIFIER_ICONS_PER_ROW_AT_MIN_SCALE;
 
         List<List<ResourceLocation>> rows = new ArrayList<>();
         if (splitRows) {
-            rows.add(new ArrayList<>(unique.subList(0, Math.min(5, unique.size()))));
-            if (unique.size() > 5) {
-                rows.add(new ArrayList<>(unique.subList(5, unique.size())));
-            }
+            scale = minScale;
 
-            int widestRowCount = 0;
-            for (List<ResourceLocation> row : rows) {
-                widestRowCount = Math.max(widestRowCount, row.size());
+            for (int i = 0; i < unique.size(); i += MAX_MODIFIER_ICONS_PER_ROW_AT_MIN_SCALE) {
+                int end = Math.min(i + MAX_MODIFIER_ICONS_PER_ROW_AT_MIN_SCALE, unique.size());
+                rows.add(new ArrayList<>(unique.subList(i, end)));
             }
-
-            int splitRequiredW = widestRowCount * srcSize + Math.max(0, widestRowCount - 1) * padPx;
-            scale = Math.min(maxScale, (float) availableW / (float) splitRequiredW);
-            if (scale < minScale) scale = minScale;
         } else {
             rows.add(unique);
         }
@@ -427,7 +421,8 @@ public class CompanionDisplayButton extends AbstractButton {
         int iconH = (int)(srcSize * scale);
         int startY = panelY + baseOffY;
         if (splitRows) {
-            startY -= (iconH + padPx) / 2;
+            int totalRowsHeight = rows.size() * iconH + Math.max(0, rows.size() - 1) * padPx;
+            startY -= (totalRowsHeight - iconH) / 2;
         }
 
         RenderSystem.setShader(GameRenderer::getPositionTexShader);
