@@ -181,6 +181,9 @@ public class CompanionDisplayButton extends AbstractButton {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (!isMouseOver(mouseX, mouseY)) {
+            return false;
+        }
         // if clicking quick equip area, don't treat as selecting companion
         if (quickEquipButton != null && quickEquipButton.isMouseOver(mouseX, mouseY)) {
             return false; // let quickEquipButton handle it
@@ -189,6 +192,14 @@ public class CompanionDisplayButton extends AbstractButton {
             return false; // let the child widget handle it
         }
         return super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return this.visible
+                && parent != null
+                && parent.isWithinCompanionList(mouseX, mouseY)
+                && super.isMouseOver(mouseX, mouseY);
     }
 
     private void renderCompanionLevel(PoseStack poseStack, ItemStack stack, int panelX, int panelY){

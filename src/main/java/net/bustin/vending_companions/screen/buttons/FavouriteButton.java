@@ -51,6 +51,19 @@ public class FavouriteButton extends AbstractButton {
         parent.toggleFavourite();
     }
 
+    @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        return isMouseOver(mouseX, mouseY) && super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return this.visible
+                && parent != null
+                && parent.isMouseOver(mouseX, mouseY)
+                && super.isMouseOver(mouseX, mouseY);
+    }
+
     public Component getTooltip(){
         if(parent.isFavourite()){
             return new TextComponent("Click to Unfavorite");

@@ -29,6 +29,12 @@ final class CompanionLockerListController {
     private static final String FAV_TIME_TAG = "vc_favourite_time";
     private static final int BUTTON_HEIGHT = 55;
     private static final int BUTTON_SPACING = 2;
+    private static final int BUTTON_STRIDE = BUTTON_HEIGHT + BUTTON_SPACING;
+    private static final int MOUSE_WHEEL_SCROLL_STEP = 20;
+    private static final int MIN_SCROLLBAR_HEIGHT = 18;
+    private static final int SCROLLBAR_TEX_W = 16;
+    private static final int SCROLLBAR_TEX_H = 42;
+    private static final int SCROLLBAR_CAP_H = 4;
 
     private final CompanionLockerScreen screen;
     private final List<CompanionDisplayButton> companionButtons = new ArrayList<>();
@@ -36,7 +42,7 @@ final class CompanionLockerListController {
     private final Map<UUID, Boolean> favouriteCache = new HashMap<>();
     private final Map<UUID, Long> favouriteTimeCache = new HashMap<>();
 
-    private int scrollRowOffset = 0;
+    private int scrollOffsetPx = 0;
     private boolean draggingScrollbar = false;
     private int scrollbarGrabOffsetY = 0;
 
@@ -57,15 +63,15 @@ final class CompanionLockerListController {
     }
 
     void resetScroll() {
-        scrollRowOffset = 0;
+        scrollOffsetPx = 0;
     }
 
     void renderScrollbar(PoseStack poseStack, int mouseX, int mouseY) {
-        int maxScrollRows = getMaxScrollRows();
-        int knobY = maxScrollRows > 0 ? getKnobY() : getBaseY();
+        int maxScrollPixels = getMaxScrollPixels();
+        int knobY = maxScrollPixels > 0 ? getKnobY() : getBaseY();
 
         ResourceLocation texture;
-        if (maxScrollRows <= 0) {
+        if (maxScrollPixels <= 0) {
             texture = CompanionLockerTextures.SCROLLBAR_DISABLED;
         } else {
             texture = draggingScrollbar || isMouseOverKnob(mouseX, mouseY)
@@ -77,14 +83,7 @@ final class CompanionLockerListController {
         RenderSystem.setShaderColor(1F, 1F, 1F, 1F);
         RenderSystem.setShaderTexture(0, texture);
 
-        float scaleX = (float) getKnobW() / 16.0F;
-        float scaleY = (float) getKnobH() / 42.0F;
-
-        poseStack.pushPose();
-        poseStack.translate(getKnobX(), knobY, 200);
-        poseStack.scale(scaleX, scaleY, 1.0F);
-        GuiComponent.blit(poseStack, 0, 0, 0, 0, 16, 42, 16, 42);
-        poseStack.popPose();
+        renderScrollbarKnob(poseStack, getKnobX(), knobY, getKnobW(), getKnobH());
     }
 
     void rebuildFilteredList() {
@@ -130,13 +129,11 @@ final class CompanionLockerListController {
     void rebuildButtons() {
         removeButtons();
 
-        int maxScrollRows = Math.max(0, filteredIndices.size() - CompanionLockerScreen.VISIBLE_ROWS);
-        scrollRowOffset = Mth.clamp(scrollRowOffset, 0, maxScrollRows);
+        scrollOffsetPx = Mth.clamp(scrollOffsetPx, 0, getMaxScrollPixels());
 
-        for (int row = scrollRowOffset; row < Math.min(filteredIndices.size(), scrollRowOffset + CompanionLockerScreen.VISIBLE_ROWS); row++) {
+        for (int row = 0; row < filteredIndices.size(); row++) {
             int realIndex = filteredIndices.get(row);
-            int visualRow = row - scrollRowOffset;
-            int buttonY = screen.listY() + visualRow * (BUTTON_HEIGHT + BUTTON_SPACING);
+            int buttonY = screen.listY() + row * BUTTON_STRIDE - scrollOffsetPx;
 
             CompanionDisplayButton button = new CompanionDisplayButton(
                     screen.listX(),
@@ -156,13 +153,13 @@ final class CompanionLockerListController {
             screen.addControl(button.quickEquipButton);
             screen.addControl(button.favouriteButton);
         }
+
+        updateButtonPositions();
     }
 
     void refreshUi() {
         rebuildFilteredList();
-
-        int maxScrollRows = Math.max(0, filteredIndices.size() - CompanionLockerScreen.VISIBLE_ROWS);
-        scrollRowOffset = Mth.clamp(scrollRowOffset, 0, maxScrollRows);
+        scrollOffsetPx = Mth.clamp(scrollOffsetPx, 0, getMaxScrollPixels());
 
         if (screen.getSelectedIndex() >= 0 && !filteredIndices.contains(screen.getSelectedIndex())) {
             screen.setSelectedIndexLocal(filteredIndices.isEmpty() ? -1 : filteredIndices.get(0));
@@ -190,19 +187,17 @@ final class CompanionLockerListController {
             return false;
         }
 
-        int maxScrollRows = getMaxScrollRows();
-        if (maxScrollRows <= 0 || delta == 0) {
+        if (getMaxScrollPixels() <= 0 || delta == 0) {
             return false;
         }
 
         int direction = (int) -Math.signum(delta);
-        scrollRowOffset = Mth.clamp(scrollRowOffset + direction, 0, maxScrollRows);
-        rebuildButtons();
+        setScrollOffset(scrollOffsetPx + direction * MOUSE_WHEEL_SCROLL_STEP);
         return true;
     }
 
     boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0 && getMaxScrollRows() > 0) {
+        if (button == 0 && getMaxScrollPixels() > 0) {
             if (isMouseOverKnob(mouseX, mouseY)) {
                 draggingScrollbar = true;
                 scrollbarGrabOffsetY = (int) (mouseY - getKnobY());
@@ -313,8 +308,73 @@ final class CompanionLockerListController {
         companionButtons.clear();
     }
 
-    private int getMaxScrollRows() {
-        return Math.max(0, filteredIndices.size() - CompanionLockerScreen.VISIBLE_ROWS);
+    boolean[] hideButtonsForSuperRender() {
+        if (companionButtons.isEmpty()) {
+            return null;
+        }
+
+        boolean[] previousVisibility = new boolean[companionButtons.size() * 3];
+        int index = 0;
+        for (CompanionDisplayButton button : companionButtons) {
+            previousVisibility[index++] = button.visible;
+            button.visible = false;
+
+            previousVisibility[index++] = button.quickEquipButton.visible;
+            button.quickEquipButton.visible = false;
+
+            previousVisibility[index++] = button.favouriteButton.visible;
+            button.favouriteButton.visible = false;
+        }
+        return previousVisibility;
+    }
+
+    void restoreButtonVisibility(boolean[] previousVisibility) {
+        if (previousVisibility == null) {
+            return;
+        }
+
+        int index = 0;
+        for (CompanionDisplayButton button : companionButtons) {
+            button.visible = previousVisibility[index++];
+            button.quickEquipButton.visible = previousVisibility[index++];
+            button.favouriteButton.visible = previousVisibility[index++];
+        }
+    }
+
+    void renderClippedButtons(PoseStack poseStack, int mouseX, int mouseY, float delta) {
+        if (companionButtons.isEmpty()) {
+            return;
+        }
+
+        poseStack.pushPose();
+        poseStack.translate(0, 0, 150);
+        enableListScissor();
+        for (CompanionDisplayButton button : companionButtons) {
+            if (!button.visible) {
+                continue;
+            }
+
+            button.render(poseStack, mouseX, mouseY, delta);
+            if (button.quickEquipButton.visible) {
+                button.quickEquipButton.render(poseStack, mouseX, mouseY, delta);
+            }
+            if (button.favouriteButton.visible) {
+                button.favouriteButton.render(poseStack, mouseX, mouseY, delta);
+            }
+        }
+        disableScissor();
+        poseStack.popPose();
+    }
+
+    private int getMaxScrollPixels() {
+        return Math.max(0, getContentHeight() - screen.listHeight());
+    }
+
+    private int getContentHeight() {
+        if (filteredIndices.isEmpty()) {
+            return 0;
+        }
+        return filteredIndices.size() * BUTTON_HEIGHT + Math.max(0, filteredIndices.size() - 1) * BUTTON_SPACING;
     }
 
     private int getKnobX() {
@@ -330,7 +390,13 @@ final class CompanionLockerListController {
     }
 
     private int getKnobH() {
-        return 32;
+        int contentHeight = getContentHeight();
+        if (contentHeight <= 0) {
+            return 32;
+        }
+
+        int knobHeight = (int) Math.round((screen.listHeight() * (double) screen.listHeight()) / (double) contentHeight);
+        return Mth.clamp(knobHeight, MIN_SCROLLBAR_HEIGHT, screen.listHeight());
     }
 
     private int getTrackLenPx() {
@@ -338,12 +404,12 @@ final class CompanionLockerListController {
     }
 
     private int getKnobY() {
-        int maxScrollRows = getMaxScrollRows();
-        if (maxScrollRows <= 0) {
+        int maxScrollPixels = getMaxScrollPixels();
+        if (maxScrollPixels <= 0) {
             return getBaseY();
         }
 
-        float progress = (float) scrollRowOffset / (float) maxScrollRows;
+        float progress = (float) scrollOffsetPx / (float) maxScrollPixels;
         return getBaseY() + (int) (getTrackLenPx() * progress);
     }
 
@@ -354,19 +420,112 @@ final class CompanionLockerListController {
     }
 
     private void setScrollFromMouse(double mouseY) {
-        int maxScrollRows = getMaxScrollRows();
-        if (maxScrollRows <= 0) {
+        int maxScrollPixels = getMaxScrollPixels();
+        if (maxScrollPixels <= 0) {
             return;
         }
 
         double knobTop = mouseY - getBaseY() - scrollbarGrabOffsetY;
         double progress = Mth.clamp((float) (knobTop / (double) getTrackLenPx()), 0.0F, 1.0F);
-        int newOffset = Mth.clamp((int) Math.round(progress * maxScrollRows), 0, maxScrollRows);
+        int newOffset = Mth.clamp((int) Math.round(progress * maxScrollPixels), 0, maxScrollPixels);
+        setScrollOffset(newOffset);
+    }
 
-        if (newOffset != scrollRowOffset) {
-            scrollRowOffset = newOffset;
-            rebuildButtons();
+    private void setScrollOffset(int newOffset) {
+        int clamped = Mth.clamp(newOffset, 0, getMaxScrollPixels());
+        if (clamped == scrollOffsetPx) {
+            return;
         }
+
+        scrollOffsetPx = clamped;
+        updateButtonPositions();
+    }
+
+    private void updateButtonPositions() {
+        for (int row = 0; row < companionButtons.size(); row++) {
+            CompanionDisplayButton button = companionButtons.get(row);
+            int buttonY = screen.listY() + row * BUTTON_STRIDE - scrollOffsetPx;
+            boolean intersectsViewport = buttonY + BUTTON_HEIGHT > screen.listY()
+                    && buttonY < screen.listY() + screen.listHeight();
+
+            button.x = screen.listX();
+            button.y = buttonY;
+            button.visible = intersectsViewport;
+            button.active = intersectsViewport;
+
+            if (button.quickEquipButton != null) {
+                button.quickEquipButton.syncToParent();
+            }
+            if (button.favouriteButton != null) {
+                button.favouriteButton.syncToParent();
+            }
+        }
+    }
+
+    private void enableListScissor() {
+        var window = net.minecraft.client.Minecraft.getInstance().getWindow();
+        double scale = window.getGuiScale();
+
+        int x = (int) Math.floor(screen.listX() * scale);
+        int y = (int) Math.floor((screen.heightValue() - (screen.listY() + screen.listHeight())) * scale);
+        int width = (int) Math.ceil(screen.listWidth() * scale);
+        int height = (int) Math.ceil(screen.listHeight() * scale);
+
+        if (width <= 0 || height <= 0) {
+            RenderSystem.disableScissor();
+            return;
+        }
+
+        RenderSystem.enableScissor(x, y, width, height);
+    }
+
+    private void disableScissor() {
+        RenderSystem.disableScissor();
+    }
+
+    private void renderScrollbarKnob(PoseStack poseStack, int x, int y, int width, int height) {
+        int middleSrcH = SCROLLBAR_TEX_H - (SCROLLBAR_CAP_H * 2);
+        int middleDestH = Math.max(0, height - (SCROLLBAR_CAP_H * 2));
+
+        renderScrollbarSlice(poseStack, x, y, width, SCROLLBAR_CAP_H, 0, 0, SCROLLBAR_TEX_W, SCROLLBAR_CAP_H);
+
+        if (middleDestH > 0) {
+            renderScrollbarSlice(
+                    poseStack,
+                    x,
+                    y + SCROLLBAR_CAP_H,
+                    width,
+                    middleDestH,
+                    0,
+                    SCROLLBAR_CAP_H,
+                    SCROLLBAR_TEX_W,
+                    middleSrcH
+            );
+        }
+
+        renderScrollbarSlice(
+                poseStack,
+                x,
+                y + height - SCROLLBAR_CAP_H,
+                width,
+                SCROLLBAR_CAP_H,
+                0,
+                SCROLLBAR_TEX_H - SCROLLBAR_CAP_H,
+                SCROLLBAR_TEX_W,
+                SCROLLBAR_CAP_H
+        );
+    }
+
+    private void renderScrollbarSlice(PoseStack poseStack, int x, int y, int width, int height, int u, int v, int srcW, int srcH) {
+        if (width <= 0 || height <= 0 || srcW <= 0 || srcH <= 0) {
+            return;
+        }
+
+        poseStack.pushPose();
+        poseStack.translate(x, y, 200);
+        poseStack.scale((float) width / (float) srcW, (float) height / (float) srcH, 1.0F);
+        GuiComponent.blit(poseStack, 0, 0, u, v, srcW, srcH, SCROLLBAR_TEX_W, SCROLLBAR_TEX_H);
+        poseStack.popPose();
     }
 
     private boolean isFavouriteIndex(int realIndex) {

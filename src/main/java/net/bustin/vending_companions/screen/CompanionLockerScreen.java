@@ -166,10 +166,13 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
             healButton.visible = false;
         }
 
+        boolean[] previousListVisibility = companionList.hideButtonsForSuperRender();
         boolean[] previousVariantVisibility = variantPanel.hideButtonsForSuperRender();
         super.render(poseStack, mouseX, mouseY, delta);
+        companionList.restoreButtonVisibility(previousListVisibility);
         variantPanel.restoreButtonVisibility(previousVariantVisibility);
 
+        companionList.renderClippedButtons(poseStack, mouseX, mouseY, delta);
         variantPanel.renderOverlay(poseStack);
         detailsRenderer.renderCompanionDetails(poseStack, mouseX, mouseY);
         detailsRenderer.renderCompanionPreviewEntity(poseStack, mouseX, mouseY);
@@ -457,6 +460,16 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
 
     int listHeight() {
         return listHeight;
+    }
+
+    public boolean isWithinCompanionList(double mouseX, double mouseY) {
+        return mouseX >= listX && mouseX < listX + listWidth
+                && mouseY >= listY && mouseY < listY + listHeight;
+    }
+
+    public boolean intersectsCompanionList(int x, int y, int width, int height) {
+        return x + width > listX && x < listX + listWidth
+                && y + height > listY && y < listY + listHeight;
     }
 
     int detailsX() {

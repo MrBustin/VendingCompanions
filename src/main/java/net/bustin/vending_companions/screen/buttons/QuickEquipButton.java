@@ -71,6 +71,19 @@ public class QuickEquipButton extends AbstractButton {
     }
 
     @Override
+    public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        return isMouseOver(mouseX, mouseY) && super.mouseClicked(mouseX, mouseY, button);
+    }
+
+    @Override
+    public boolean isMouseOver(double mouseX, double mouseY) {
+        return this.visible
+                && parent != null
+                && parent.isMouseOver(mouseX, mouseY)
+                && super.isMouseOver(mouseX, mouseY);
+    }
+
+    @Override
     public void renderButton(PoseStack poseStack, int mouseX, int mouseY, float partialTick) {
         if (!visible) return;
 
