@@ -30,11 +30,13 @@ import net.minecraftforge.items.CapabilityItemHandler;
 import net.minecraftforge.items.ItemStackHandler;
 import org.jetbrains.annotations.Nullable;
 import top.theillusivec4.curios.api.CuriosApi;
+import top.theillusivec4.curios.api.SlotResult;
 import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
 import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
 
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 public class CompanionVendingMachineBlockEntity extends BlockEntity implements MenuProvider {
@@ -88,34 +90,30 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         ItemStack newCompanion = stored.copy();
         newCompanion.setCount(1);
 
-        IDynamicStackHandler headStacks = getStacks(player, "head");
-
         // --- QUICK EQUIP: swap behavior ---
-        if (quickEquip && headStacks != null && headStacks.getSlots() > 0) {
-            ItemStack oldHead = headStacks.getStackInSlot(0);
+        if (quickEquip) {
+            CurioSlotRef equippedSlot = findFirstEquippedCompanionSlot(player);
+            if (equippedSlot != null) {
+                ItemStack oldCurio = equippedSlot.stacks().getStackInSlot(equippedSlot.index());
 
-            if (!oldHead.isEmpty() && oldHead.getItem() instanceof CompanionItem) {
-                ItemStack oldCopy = oldHead.copy();
-                oldCopy.setCount(1);
+                if (!oldCurio.isEmpty() && oldCurio.getItem() instanceof CompanionItem) {
+                    ItemStack oldCopy = oldCurio.copy();
+                    oldCopy.setCount(1);
 
-                headStacks.setStackInSlot(0, newCompanion);
-                list.set(index, oldCopy);
-                markDirtyAndSync();
-                return;
+                    equippedSlot.stacks().setStackInSlot(equippedSlot.index(), newCompanion);
+                    list.set(index, oldCopy);
+                    markDirtyAndSync();
+                    return;
+                }
             }
 
-            if (oldHead.isEmpty()) {
-                headStacks.setStackInSlot(0, newCompanion);
+            CurioSlotRef emptySlot = findFirstEmptyValidCurioSlot(player, newCompanion);
+            if (emptySlot != null) {
+                emptySlot.stacks().setStackInSlot(emptySlot.index(), newCompanion);
                 list.remove(index);
                 markDirtyAndSync();
                 return;
             }
-
-            // non-companion in head -> fallback
-            giveToInvOrDrop(player, newCompanion);
-            list.remove(index);
-            markDirtyAndSync();
-            return;
         }
 
         // --- NORMAL EQUIP: NO SWAP ---
@@ -132,32 +130,32 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
 // -------- helpers --------
 
     // --------- Curios Helpers ----------
-    private static IDynamicStackHandler getStacks(Player player, String slotKey) {
-        final IDynamicStackHandler[] out = new IDynamicStackHandler[]{ null };
+    private static CurioSlotRef findFirstEquippedCompanionSlot(Player player) {
+        return CuriosApi.getCuriosHelper()
+                .findFirstCurio(player, stack -> !stack.isEmpty() && stack.getItem() instanceof CompanionItem)
+                .map(CompanionVendingMachineBlockEntity::toSlotRef)
+                .orElse(null);
+    }
+
+    private static CurioSlotRef findFirstEmptyValidCurioSlot(Player player, ItemStack stackToEquip) {
+        final CurioSlotRef[] out = new CurioSlotRef[]{ null };
 
         CuriosApi.getCuriosHelper().getCuriosHandler(player).ifPresent(curios -> {
-            // Curios versions differ: some have getStacksHandler, some expose a map.
-            try {
-                // Newer 1.18.2 Curios style: getStacksHandler(String) -> Optional<ICurioStacksHandler>
-                Object opt = curios.getClass().getMethod("getStacksHandler", String.class).invoke(curios, slotKey);
-                if (opt instanceof java.util.Optional<?> o && o.isPresent()) {
-                    Object handlerObj = o.get();
-                    if (handlerObj instanceof ICurioStacksHandler h) {
-                        out[0] = h.getStacks();
+            for (Map.Entry<String, ICurioStacksHandler> entry : curios.getCurios().entrySet()) {
+                ICurioStacksHandler handler = entry.getValue();
+                if (handler == null) continue;
+
+                IDynamicStackHandler stacks = handler.getStacks();
+                for (int i = 0; i < stacks.getSlots(); i++) {
+                    if (!stacks.getStackInSlot(i).isEmpty()) continue;
+
+                    if (CuriosApi.getCuriosHelper().isStackValid(
+                            new top.theillusivec4.curios.api.SlotContext(entry.getKey(), player, i, false, handler.isVisible()),
+                            stackToEquip
+                    )) {
+                        out[0] = new CurioSlotRef(entry.getKey(), i, stacks);
+                        return;
                     }
-                }
-            } catch (ReflectiveOperationException ignored) {
-                // Older style: getCurios() -> Map<String, ICurioStacksHandler>
-                try {
-                    Object mapObj = curios.getClass().getMethod("getCurios").invoke(curios);
-                    if (mapObj instanceof java.util.Map<?, ?> map) {
-                        Object handlerObj = map.get(slotKey);
-                        if (handlerObj instanceof ICurioStacksHandler h) {
-                            out[0] = h.getStacks();
-                        }
-                    }
-                } catch (ReflectiveOperationException ignored2) {
-                    out[0] = null;
                 }
             }
         });
@@ -165,18 +163,29 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         return out[0];
     }
 
-    public boolean pullCompanionFromHeadCurio(ServerPlayer player) {
-        IDynamicStackHandler headStacks = getStacks(player, "head");
-        if (headStacks == null || headStacks.getSlots() <= 0) return false;
+    private static CurioSlotRef toSlotRef(SlotResult result) {
+        String identifier = result.slotContext().identifier();
+        int index = result.slotContext().index();
+        return CuriosApi.getCuriosHelper().getCuriosHandler(result.slotContext().entity())
+                .resolve()
+                .flatMap(curios -> curios.getStacksHandler(identifier))
+                .map(ICurioStacksHandler::getStacks)
+                .map(stacks -> new CurioSlotRef(identifier, index, stacks))
+                .orElse(null);
+    }
 
-        ItemStack curio = headStacks.getStackInSlot(0);
+    public boolean pullCompanionFromCurio(ServerPlayer player) {
+        CurioSlotRef equippedSlot = findFirstEquippedCompanionSlot(player);
+        if (equippedSlot == null) return false;
+
+        ItemStack curio = equippedSlot.stacks().getStackInSlot(equippedSlot.index());
         if (curio.isEmpty() || !(curio.getItem() instanceof CompanionItem)) return false;
 
         ItemStack toStore = curio.copy();
         toStore.setCount(1);
 
         // remove from curio
-        headStacks.setStackInSlot(0, ItemStack.EMPTY);
+        equippedSlot.stacks().setStackInSlot(equippedSlot.index(), ItemStack.EMPTY);
 
         // store into locker
         this.insertCompanion(toStore);
@@ -372,6 +381,7 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         ).inflate(0.25);
     }
 
+    private record CurioSlotRef(String identifier, int index, IDynamicStackHandler stacks) {}
 
 }
 
