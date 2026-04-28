@@ -68,6 +68,13 @@ public class ModNetworks {
                 HealCompanionC2SPacket::decode,
                 HealCompanionC2SPacket::handle
         );
+        CHANNEL.registerMessage(
+                packetId++,
+                ReleaseCompanionC2SPacket.class,
+                ReleaseCompanionC2SPacket::encode,
+                ReleaseCompanionC2SPacket::decode,
+                ReleaseCompanionC2SPacket::handle
+        );
     }
 
     public static void onCommonSetup(final FMLCommonSetupEvent event) {

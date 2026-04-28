@@ -46,6 +46,9 @@ public final class CompanionLockerTextures {
     public static final ResourceLocation FAVOURITE_ON_BUTTON = modTexture("textures/gui/favourite_on_button.png");
     public static final ResourceLocation FAVOURITE_ON_BUTTON_HOVER = modTexture("textures/gui/favourite_on_button_highlighted.png");
 
+    public static final ResourceLocation RELEASE_BUTTON = modTexture("textures/gui/release_button.png");
+    public static final ResourceLocation RELEASE_BUTTON_HOVER = modTexture("textures/gui/release_button_hover.png");
+
     public static ResourceLocation temporalModifier(String id) {
         return modTexture("textures/gui/temporal_modifiers/" + id + ".png");
     }

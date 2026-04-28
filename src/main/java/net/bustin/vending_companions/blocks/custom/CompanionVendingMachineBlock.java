@@ -188,9 +188,7 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
     @Override
     public RenderShape getRenderShape(BlockState state) {
-        return state.getValue(HALF) == DoubleBlockHalf.UPPER
-                ? RenderShape.INVISIBLE
-                : RenderShape.MODEL;
+        return RenderShape.MODEL;
     }
 
     @Override

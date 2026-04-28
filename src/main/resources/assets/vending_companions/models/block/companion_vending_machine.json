@@ -5,7 +5,8 @@
   "texture_size": [32, 32],
   "textures": {
     "4": "vending_companions:block/companion_locker_shelf",
-    "5": "vending_companions:block/companion_locker"
+    "5": "vending_companions:block/companion_locker",
+    "particle": "vending_companions:block/companion_locker"
   },
   "elements": [
     {

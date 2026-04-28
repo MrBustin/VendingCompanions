@@ -1,6 +1,9 @@
 package net.bustin.vending_companions.blocks.entity.custom;
 
+import iskallia.vault.init.ModItems;
+import iskallia.vault.init.ModSounds;
 import iskallia.vault.item.CompanionItem;
+import net.bustin.vending_companions.blocks.custom.CompanionVendingMachineBlock;
 import net.bustin.vending_companions.blocks.entity.ModBlockEntites;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.minecraft.core.BlockPos;
@@ -16,11 +19,13 @@ import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.sounds.SoundEvents;
 import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.MenuProvider;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.entity.BlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
@@ -35,6 +40,7 @@ import top.theillusivec4.curios.api.type.inventory.ICurioStacksHandler;
 import top.theillusivec4.curios.api.type.inventory.IDynamicStackHandler;
 
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -75,6 +81,7 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
 
     // List of all stored companions
     private final NonNullList<ItemStack> companions = NonNullList.create();
+    private final List<Integer> pendingCapstoneDrops = new ArrayList<>();
 
     public CompanionVendingMachineBlockEntity(BlockPos pos, BlockState blockState) {
         super(ModBlockEntites.COMPANION_VENDING_MACHINE_BLOCK_ENTITY.get(), pos, blockState);
@@ -210,6 +217,64 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
         }
     }
 
+    public boolean releaseCompanion(int index) {
+        if (level == null || level.isClientSide) {
+            return false;
+        }
+
+        if (index < 0 || index >= companions.size()) {
+            return false;
+        }
+
+        ItemStack removed = companions.remove(index);
+        if (removed.isEmpty() || !(removed.getItem() instanceof CompanionItem)) {
+            return false;
+        }
+
+        markDirtyAndSync();
+
+        // Vault Hunters uses a hardcoded 50% capstone roll in ReleasingCompanionEntity.
+        if (level.random.nextFloat() >= 0.5F) {
+            return true;
+        }
+
+        pendingCapstoneDrops.add(10);
+        setChanged();
+        return true;
+    }
+
+    private void spawnReleasedCapstone() {
+        if (level == null || level.isClientSide) {
+            return;
+        }
+
+        BlockState state = getBlockState();
+        Direction facing = state.hasProperty(CompanionVendingMachineBlock.FACING)
+                ? state.getValue(CompanionVendingMachineBlock.FACING)
+                : Direction.NORTH;
+
+        double spawnX = worldPosition.getX() + 0.5D + facing.getStepX() * 0.7D;
+        double spawnY = worldPosition.getY();
+        double spawnZ = worldPosition.getZ() + 0.5D + facing.getStepZ() * 0.7D;
+
+        ItemEntity itemEntity = new ItemEntity(level, spawnX, spawnY, spawnZ, new ItemStack(ModItems.COMPANION_CAPSTONE));
+        double launchSpeed = 0.1D;
+        itemEntity.setDeltaMovement(
+                facing.getStepX() * launchSpeed + level.random.nextGaussian() * 0.015D,
+                0.08D + level.random.nextGaussian() * 0.01D,
+                facing.getStepZ() * launchSpeed + level.random.nextGaussian() * 0.015D
+        );
+        level.addFreshEntity(itemEntity);
+        level.playSound(
+                null,
+                worldPosition,
+                ModSounds.COMPANION_EGG_SPAWN,
+                SoundSource.BLOCKS,
+                0.05F,
+                1.0F
+        );
+    }
+
     public List<ItemStack> getCompanions() {
         return this.companions; // or Collections.unmodifiableList, but list is fine here
     }
@@ -277,7 +342,19 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
     }
 
     public static void tick(Level level, BlockPos pos, BlockState state, CompanionVendingMachineBlockEntity be) {
-        // future logic
+        if (level.isClientSide || be.pendingCapstoneDrops.isEmpty()) {
+            return;
+        }
+
+        for (int i = be.pendingCapstoneDrops.size() - 1; i >= 0; i--) {
+            int ticksRemaining = be.pendingCapstoneDrops.get(i) - 1;
+            if (ticksRemaining <= 0) {
+                be.pendingCapstoneDrops.remove(i);
+                be.spawnReleasedCapstone();
+            } else {
+                be.pendingCapstoneDrops.set(i, ticksRemaining);
+            }
+        }
     }
 
     // ---------- NBT ----------

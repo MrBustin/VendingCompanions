@@ -9,11 +9,7 @@ import net.bustin.vending_companions.network.c2s.EquipCompanionC2SPacket;
 import net.bustin.vending_companions.network.c2s.HealCompanionC2SPacket;
 import net.bustin.vending_companions.network.c2s.QuickEquipCompanionC2SPacket;
 import net.bustin.vending_companions.network.c2s.SelectCompanionC2SPacket;
-import net.bustin.vending_companions.screen.buttons.CompanionDisplayButton;
-import net.bustin.vending_companions.screen.buttons.HealButton;
-import net.bustin.vending_companions.screen.buttons.VariantItemButton;
-import net.bustin.vending_companions.screen.buttons.VariantTextButton;
-import net.bustin.vending_companions.screen.buttons.VariantToggleButton;
+import net.bustin.vending_companions.screen.buttons.*;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -70,7 +66,7 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
     private int xpOffX = 22;
     private int xpOffY = 160;
     private int statsOffX = 120;
-    private int statsOffY = 128;
+    private int statsOffY = 120;
     private int previewOffX = 15;
     private int previewOffY = 50;
     private int previewWidth = 80;
@@ -698,6 +694,12 @@ public class CompanionLockerScreen extends AbstractContainerScreen<CompanionVend
         VariantToggleButton changeModelButton = variantPanel.changeModelButton();
         if (changeModelButton != null && changeModelButton.isMouseOverButton(mouseX, mouseY)) {
             this.renderTooltip(poseStack, changeModelButton.getTooltip(), mouseX, mouseY);
+            return;
+        }
+
+        ReleaseCompanionButton releaseCompanionButton = variantPanel.releaseCompanionButton();
+        if (releaseCompanionButton != null && releaseCompanionButton.isMouseOverButton(mouseX, mouseY)) {
+            this.renderTooltip(poseStack, releaseCompanionButton.getTooltip(), mouseX, mouseY);
             return;
         }
 

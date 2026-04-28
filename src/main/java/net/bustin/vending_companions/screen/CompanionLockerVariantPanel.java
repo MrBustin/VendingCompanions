@@ -2,12 +2,15 @@ package net.bustin.vending_companions.screen;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
+import iskallia.vault.client.gui.framework.ScreenTextures;
 import iskallia.vault.entity.entity.pet.PetHelper;
 import iskallia.vault.entity.entity.pet.PetModelType;
 import iskallia.vault.item.CompanionItem;
 import iskallia.vault.item.CompanionSeries;
 import net.bustin.vending_companions.network.ModNetworks;
 import net.bustin.vending_companions.network.c2s.ChangeCompanionVariantC2SPacket;
+import net.bustin.vending_companions.network.c2s.ReleaseCompanionC2SPacket;
+import net.bustin.vending_companions.screen.buttons.ReleaseCompanionButton;
 import net.bustin.vending_companions.screen.buttons.VariantItemButton;
 import net.bustin.vending_companions.screen.buttons.VariantTextButton;
 import net.bustin.vending_companions.screen.buttons.VariantToggleButton;
@@ -34,6 +37,7 @@ final class CompanionLockerVariantPanel {
     private final List<Button> variantButtons = new ArrayList<>();
 
     private VariantToggleButton changeModelButton;
+    private ReleaseCompanionButton releaseCompanionButton;
     private boolean variantsOpen = false;
     private float variantsAnim = 0.0f;
 
@@ -47,6 +51,10 @@ final class CompanionLockerVariantPanel {
 
     VariantToggleButton changeModelButton() {
         return changeModelButton;
+    }
+
+    ReleaseCompanionButton releaseCompanionButton() {
+        return releaseCompanionButton;
     }
 
     float animationProgress() {
@@ -69,9 +77,18 @@ final class CompanionLockerVariantPanel {
                 new TextComponent("Change Model"),
                 button -> toggleMenu()
         );
+        releaseCompanionButton = new ReleaseCompanionButton(
+                screen.detailsX() + screen.detailsWidth() - 15,
+                screen.detailsY() + screen.detailsHeight() - 15,
+                15, 15,
+                CompanionLockerTextures.RELEASE_BUTTON,
+                CompanionLockerTextures.RELEASE_BUTTON_HOVER,
+                new TextComponent("Release Companion"),
+                button -> toggleRelease()
+        );
         screen.addControl(changeModelButton);
+        screen.addControl(releaseCompanionButton);
     }
-
     void tickAnimation() {
         float speed = 0.05f;
         if (variantsOpen) {
@@ -323,6 +340,16 @@ final class CompanionLockerVariantPanel {
                 );
             }
         }
+    }
+
+    private void toggleRelease() {
+        if (screen.getSelectedIndex() < 0) {
+            return;
+        }
+
+        ModNetworks.CHANNEL.sendToServer(
+                new ReleaseCompanionC2SPacket(screen.menu().getBlockPos(), screen.getSelectedIndex())
+        );
     }
 
     private void removeButtons() {
