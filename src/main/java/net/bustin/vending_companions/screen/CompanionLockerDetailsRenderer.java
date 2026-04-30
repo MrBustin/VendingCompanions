@@ -475,17 +475,21 @@ final class CompanionLockerDetailsRenderer {
         int cooldown = CompanionItem.getCurrentCooldown(stack);
 
         String status;
+        int statusColor;
         if (hearts <= 0) {
             status = "Retired";
+            statusColor = 0xFF5555;
         } else if (cooldown <= 0) {
             status = "Ready";
+            statusColor = 0x44CC44;
         } else {
             status = UIHelper.formatTimeString((long) cooldown * 20L);
+            statusColor = 0x404040;
         }
 
         screen.fontRenderer().draw(poseStack, CompanionItem.getVaultRuns(stack) + " vaults", sx, sy, 0x404040);
         screen.fontRenderer().draw(poseStack, days + " days", sx, sy + 12, 0x404040);
-        screen.fontRenderer().draw(poseStack, status, sx, sy + 24, 0x404040);
+        screen.fontRenderer().draw(poseStack, status, sx, sy + 24, statusColor);
     }
 
     @Nullable

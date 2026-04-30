@@ -4,6 +4,7 @@ package net.bustin.vending_companions.screen.buttons;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.datafixers.util.Pair;
+import iskallia.vault.client.gui.helper.UIHelper;
 import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
 import iskallia.vault.core.vault.modifier.spi.VaultModifier;
 import iskallia.vault.item.CompanionItem;
@@ -300,9 +301,30 @@ public class CompanionDisplayButton extends AbstractButton {
         int nameOffX = 5;
         int nameOffY = 5;
         String name = CompanionItem.getPetName(stack);
-        if (name == null || name.isEmpty()) name = "Companion";
+        int hearts = CompanionItem.getCompanionHearts(stack);
+        int cooldown = CompanionItem.getCurrentCooldown(stack);
 
-        this.font.draw(poseStack, name, panelX + nameOffX, panelY + nameOffY, 0x404040);
+        String status;
+        int statusColor;
+        if (hearts <= 0) {
+            status = "Retired";
+            statusColor = 0xFF5555;
+        } else if (cooldown <= 0) {
+            status = "Ready";
+            statusColor = 0x44CC44;
+        } else {
+            status = UIHelper.formatTimeString((long) cooldown * 20L);
+            statusColor = 0x404040;
+        }
+        if (name == null || name.isEmpty()) name = "Companion";
+        if (name.length() > 9) name = name.substring(0, 9) + "...";
+
+        int textX = panelX + nameOffX;
+        int textY = panelY + nameOffY;
+        String prefix = name + " | ";
+
+        this.font.draw(poseStack, prefix, textX, textY, 0x404040);
+        this.font.draw(poseStack, status, textX + this.font.width(prefix), textY, statusColor);
     }
 
     private void renderTemporalModifier(PoseStack poseStack, ItemStack stack, int panelX, int panelY) {
