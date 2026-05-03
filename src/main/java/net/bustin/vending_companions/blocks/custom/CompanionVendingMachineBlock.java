@@ -129,6 +129,10 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
         BlockPos above = pos.above();
         level.setBlock(above, state.setValue(HALF, DoubleBlockHalf.UPPER), 3);
+
+        if (placer instanceof Player player && level.getBlockEntity(pos) instanceof CompanionVendingMachineBlockEntity locker) {
+            locker.setOwner(player);
+        }
     }
 
     @Override
@@ -153,30 +157,24 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
         DoubleBlockHalf half = state.getValue(HALF);
 
-        // If the TOP half is broken, route the break to the BOTTOM half (the BE lives there)
         if (half == DoubleBlockHalf.UPPER) {
             BlockPos mainPos = pos.below();
             BlockState mainState = level.getBlockState(mainPos);
 
-            // remove the top half first without drops
             level.removeBlock(pos, false);
 
             if (mainState.getBlock() == this) {
                 if (player.isCreative()) {
-                    // creative: just delete the lower too (no drops)
                     level.removeBlock(mainPos, false);
                 } else {
-                    // survival: break the lower normally -> this is where your "shulker-style" item drop happens
                     level.destroyBlock(mainPos, true, player);
                 }
             }
             return;
         }
 
-        // If the BOTTOM half is broken, let vanilla flow happen (this is already working for you)
         super.playerWillDestroy(level, pos, state, player);
 
-        // Then remove the top half without drops
         BlockPos above = pos.above();
         BlockState aboveState = level.getBlockState(above);
         if (aboveState.getBlock() == this && aboveState.getValue(HALF) == DoubleBlockHalf.UPPER) {
@@ -184,7 +182,38 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
         }
     }
 
+    @Override
+    public boolean onDestroyedByPlayer(BlockState state, Level level, BlockPos pos, Player player, boolean willHarvest, net.minecraft.world.level.material.FluidState fluid) {
+        if (!canBreak(level, pos, state, player)) {
+            if (!level.isClientSide) {
+                player.displayClientMessage(
+                        new TextComponent("You do not own this Companion Locker.")
+                                .withStyle(ChatFormatting.RED),
+                        true
+                );
+            }
+            return false;
+        }
 
+        return super.onDestroyedByPlayer(state, level, pos, player, willHarvest, fluid);
+    }
+
+
+    private boolean canBreak(Level level, BlockPos pos, BlockState state, Player player) {
+        if (player.isCreative()) return true;
+
+        BlockPos mainPos = state.getValue(HALF) == DoubleBlockHalf.UPPER
+                ? pos.below()
+                : pos;
+
+        BlockEntity be = level.getBlockEntity(mainPos);
+
+        if (be instanceof CompanionVendingMachineBlockEntity locker) {
+            return locker.isOwner(player);
+        }
+
+        return false;
+    }
 
     @Override
     public RenderShape getRenderShape(BlockState state) {

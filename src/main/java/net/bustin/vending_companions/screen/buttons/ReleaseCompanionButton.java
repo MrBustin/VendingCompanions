@@ -48,15 +48,4 @@ public class ReleaseCompanionButton extends Button {
                 this.width, this.height,
                 this.width, this.height);
     }
-
-    @Override
-    public void playDownSound(SoundManager soundManager) {
-        soundManager.play(
-                SimpleSoundInstance.forUI(
-                        ModSounds.BYE_BYE,
-                        1.0f,
-                        1.0f
-                )
-        );
-    }
 }
