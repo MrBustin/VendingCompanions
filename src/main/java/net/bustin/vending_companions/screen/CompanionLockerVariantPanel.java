@@ -329,7 +329,13 @@ final class CompanionLockerVariantPanel {
     }
 
     private void toggleMenu() {
-        variantsOpen = !variantsOpen;
+        if (variantsOpen) {
+            closeVariantMenu();
+            return;
+        }
+
+        closeReleaseConfirmation();
+        variantsOpen = true;
     }
 
     private void changeVariant(String variantType) {
@@ -399,12 +405,27 @@ final class CompanionLockerVariantPanel {
             return;
         }
 
-        releaseConfirmOpen = !releaseConfirmOpen;
+        if (releaseConfirmOpen) {
+            closeReleaseConfirmation();
+            return;
+        }
+
+        closeVariantMenu();
+        releaseConfirmOpen = true;
     }
 
     private void closeReleaseConfirmation() {
         releaseConfirmOpen = false;
         for (Button button : releaseButtons) {
+            button.active = false;
+        }
+    }
+
+    private void closeVariantMenu() {
+        variantsOpen = false;
+        variantsAnim = 0.0f;
+        for (Button button : variantButtons) {
+            button.visible = false;
             button.active = false;
         }
     }
@@ -446,6 +467,7 @@ final class CompanionLockerVariantPanel {
             button.x = baseX - (int) ((1.0f - progress) * slideDistance);
             button.y = baseY + i * 22;
             button.visible = variantsAnim > 0.02f;
+            button.active = variantsOpen;
         }
     }
 

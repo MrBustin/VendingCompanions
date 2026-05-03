@@ -310,17 +310,14 @@
     },
     "firstperson_righthand": {
       "rotation": [-9, 157, 0],
-      "translation": [3, 0.75, 0],
-      "scale": [0.2, 0.2, 0.2]
+      "scale": [0.3, 0.3, 0.3]
     },
     "firstperson_lefthand": {
       "rotation": [-9, 157, 0],
-      "translation": [3.25, 0.75, 0],
-      "scale": [0.2, 0.2, 0.2]
+      "scale": [0.3, 0.3, 0.3]
     },
     "ground": {
-      "rotation": [27, 0, 0],
-      "translation": [0, 1.75, 0],
+      "translation": [0, 1, 0],
       "scale": [0.2, 0.2, 0.2]
     },
     "gui": {
