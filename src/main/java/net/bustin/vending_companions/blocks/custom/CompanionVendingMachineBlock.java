@@ -88,7 +88,7 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
             int moved = locker.pullCompanionsFromCurios(sp);
             if (moved > 0) {
                 pPlayer.displayClientMessage(
-                        new TextComponent("Stored " + moved + " companion" + (moved == 1 ? "" : "s") + ".")
+                        new TextComponent("Stored Companion")
                                 .withStyle(ChatFormatting.GREEN),
                         true
                 );
