@@ -83,13 +83,13 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
 
         ItemStack held = pPlayer.getItemInHand(pHand);
 
-        // SHIFT + empty hand: pull companion from the equipped Curios slot into locker
+        // SHIFT + empty hand: pull all companions from Curios into the locker
         if (pPlayer.isShiftKeyDown() && held.isEmpty() && pPlayer instanceof ServerPlayer sp) {
-            boolean moved = locker.pullCompanionFromCurio(sp);
-            if (moved) {
-                // optional feedback
+            int moved = locker.pullCompanionsFromCurios(sp);
+            if (moved > 0) {
                 pPlayer.displayClientMessage(
-                        new TextComponent("Stored your equipped companion.").withStyle(ChatFormatting.GREEN),
+                        new TextComponent("Stored " + moved + " companion" + (moved == 1 ? "" : "s") + ".")
+                                .withStyle(ChatFormatting.GREEN),
                         true
                 );
                 return InteractionResult.CONSUME; // don't open GUI

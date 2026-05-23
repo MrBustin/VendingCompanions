@@ -181,29 +181,37 @@ public class CompanionVendingMachineBlockEntity extends BlockEntity implements M
                 .orElse(null);
     }
 
-    public boolean pullCompanionFromCurio(ServerPlayer player) {
-        CurioSlotRef equippedSlot = findFirstEquippedCompanionSlot(player);
-        if (equippedSlot == null) return false;
+    public int pullCompanionsFromCurios(ServerPlayer player) {
+        final int[] moved = {0};
 
-        ItemStack curio = equippedSlot.stacks().getStackInSlot(equippedSlot.index());
-        if (curio.isEmpty() || !(curio.getItem() instanceof CompanionItem)) return false;
+        CuriosApi.getCuriosHelper().getCuriosHandler(player).ifPresent(curios -> {
+            for (Map.Entry<String, ICurioStacksHandler> entry : curios.getCurios().entrySet()) {
+                ICurioStacksHandler handler = entry.getValue();
+                if (handler == null) continue;
 
-        ItemStack toStore = curio.copy();
-        toStore.setCount(1);
+                IDynamicStackHandler stacks = handler.getStacks();
+                for (int i = 0; i < stacks.getSlots(); i++) {
+                    ItemStack curio = stacks.getStackInSlot(i);
+                    if (curio.isEmpty() || !(curio.getItem() instanceof CompanionItem)) continue;
 
-        // remove from curio
-        equippedSlot.stacks().setStackInSlot(equippedSlot.index(), ItemStack.EMPTY);
+                    ItemStack toStore = curio.copy();
+                    toStore.setCount(1);
 
-        // store into locker
-        this.insertCompanion(toStore);
+                    stacks.setStackInSlot(i, ItemStack.EMPTY);
+                    this.insertCompanion(toStore);
+                    moved[0]++;
+                }
+            }
+        });
 
-        // optional: sync
-        this.setChanged();
-        if (this.level != null) {
-            this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
+        if (moved[0] > 0) {
+            this.setChanged();
+            if (this.level != null) {
+                this.level.sendBlockUpdated(this.worldPosition, this.getBlockState(), this.getBlockState(), 3);
+            }
         }
 
-        return true;
+        return moved[0];
     }
 
     private void giveToInvOrDrop(ServerPlayer player, ItemStack stack) {
