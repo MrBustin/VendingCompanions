@@ -120,13 +120,15 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     // ---------- relic / trail sync ----------
 
     private void refreshRelicAndTrailFromCompanion() {
-        // clear GUI contents first
+        // Clear GUI contents first
         for (int i = 0; i < relicContainer.getContainerSize(); i++) {
             relicContainer.setItem(i, ItemStack.EMPTY);
         }
+
         for (int i = 0; i < trailContainer.getContainerSize(); i++) {
             trailContainer.setItem(i, ItemStack.EMPTY);
         }
+
         for (int i = 0; i < ancientRelicContainer.getContainerSize(); i++) {
             ancientRelicContainer.setItem(i, ItemStack.EMPTY);
         }
@@ -135,31 +137,12 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             return;
         }
 
-        // ---- relics -> GUI container (this was wrong before) ----
-        // ---- relics -> GUI container ----
+        // ---- normal relics -> GUI container ----
         for (int i = 0; i < relicContainer.getContainerSize(); ++i) {
             final int slot = i;
 
             CompanionItem.getRelic(companionStack, slot).ifPresent(mods -> {
                 ItemStack relicStack = CompanionRelicItem.create(mods);
-
-                // Cleanup old/bad data:
-                // Ancient relics are not allowed in normal relic slots.
-                if (CompanionRelicItem.isAncient(relicStack)) {
-                    CompanionItem.setRelic(companionStack, slot, 0, Collections.emptyList());
-
-                    blockEntity.setChanged();
-                    if (!level.isClientSide) {
-                        level.sendBlockUpdated(
-                                blockPos,
-                                blockEntity.getBlockState(),
-                                blockEntity.getBlockState(),
-                                3
-                        );
-                    }
-
-                    return;
-                }
 
                 relicContainer.setItem(slot, relicStack);
             });
@@ -168,18 +151,31 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         // ---- trails -> GUI container ----
         for (int i = 0; i < trailContainer.getContainerSize(); ++i) {
             int colour = CompanionItem.getCosmeticColour(companionStack, i);
+
             if (colour != -1) {
                 CompanionParticleTrailItem.TrailType type =
                         CompanionItem.getCosmeticTrailType(companionStack, i);
+
                 if (type != null) {
-                    trailContainer.setItem(i, CompanionParticleTrailItem.create(colour, type));
+                    trailContainer.setItem(
+                            i,
+                            CompanionParticleTrailItem.create(colour, type)
+                    );
                 }
             }
         }
 
-        CompanionItem.getAncientRelic(companionStack).ifPresent(mods ->
-                ancientRelicContainer.setItem(0, CompanionRelicItem.create(mods))
-        );
+        // ---- ancient relic -> GUI container ----
+        CompanionItem.getAncientRelic(companionStack).ifPresent(mods -> {
+            ItemStack relicStack = CompanionRelicItem.create(mods);
+
+            // Important:
+            // Ancient relic data is stored separately, so when recreating the GUI stack,
+            // you must mark it as ancient again.
+            CompanionRelicItem.setAncient(relicStack, true);
+
+            ancientRelicContainer.setItem(0, relicStack);
+        });
     }
 
     // ---------- slots ----------
@@ -524,16 +520,22 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             }
 
             ItemStack stack = this.getItem();
+
             if (stack.isEmpty()) {
                 CompanionItem.setRelic(companionStack, this.relicIndex, 0, Collections.emptyList());
             } else {
-                List<ResourceLocation> mods = CompanionRelicItem.getModifiers(stack);
-                CompanionItem.setRelic(
-                        companionStack,
-                        this.relicIndex,
-                        CompanionRelicItem.getModel(stack),
-                        mods
-                );
+                if (CompanionRelicItem.isAncient(stack)) {
+                    this.set(ItemStack.EMPTY);
+                    CompanionItem.setRelic(companionStack, this.relicIndex, 0, Collections.emptyList());
+                } else {
+                    List<ResourceLocation> mods = CompanionRelicItem.getModifiers(stack);
+                    CompanionItem.setRelic(
+                            companionStack,
+                            this.relicIndex,
+                            CompanionRelicItem.getModel(stack),
+                            mods
+                    );
+                }
             }
 
             blockEntity.setChanged();
