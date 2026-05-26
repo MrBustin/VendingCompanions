@@ -136,11 +136,33 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         }
 
         // ---- relics -> GUI container (this was wrong before) ----
+        // ---- relics -> GUI container ----
         for (int i = 0; i < relicContainer.getContainerSize(); ++i) {
             final int slot = i;
-            CompanionItem.getRelic(companionStack, slot).ifPresent(mods ->
-                    relicContainer.setItem(slot, CompanionRelicItem.create(mods))
-            );
+
+            CompanionItem.getRelic(companionStack, slot).ifPresent(mods -> {
+                ItemStack relicStack = CompanionRelicItem.create(mods);
+
+                // Cleanup old/bad data:
+                // Ancient relics are not allowed in normal relic slots.
+                if (CompanionRelicItem.isAncient(relicStack)) {
+                    CompanionItem.setRelic(companionStack, slot, 0, Collections.emptyList());
+
+                    blockEntity.setChanged();
+                    if (!level.isClientSide) {
+                        level.sendBlockUpdated(
+                                blockPos,
+                                blockEntity.getBlockState(),
+                                blockEntity.getBlockState(),
+                                3
+                        );
+                    }
+
+                    return;
+                }
+
+                relicContainer.setItem(slot, relicStack);
+            });
         }
 
         // ---- trails -> GUI container ----
@@ -481,6 +503,7 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         public boolean mayPlace(ItemStack stack) {
             return this.isUnlocked()
                     && stack.getItem() instanceof CompanionRelicItem
+                    && !CompanionRelicItem.isAncient(stack)
                     && !this.hasItem()
                     && CompanionItem.getCompanionHearts(companionStack) > 0;
         }
