@@ -19,6 +19,7 @@ plugins {
 
 
 apply plugin: 'org.spongepowered.mixin'
+apply from: 'applesilicon.gradle'
 
 
 version = mod_version
@@ -150,6 +151,9 @@ repositories {
             includeGroup "curse.maven"
         }
     }
+    flatDir {
+        dirs 'libs'
+    }
     // If you have mod jar dependencies in ./libs, you can declare them as a repository like so:
     // flatDir {
     //     dir 'libs'
@@ -168,7 +172,7 @@ dependencies {
     annotationProcessor 'org.spongepowered:mixin:0.8.5:processor'
 
     //VH
-    implementation fg.deobf("curse.maven:vault-hunters-official-mod-458203:7867725") //Update 20: 7373671
+    implementation fg.deobf("local.the_vault:the_vault-vaultparadise-local:1.18.2-3.21.51") // Local VaultParadise build
 
 
     //deps

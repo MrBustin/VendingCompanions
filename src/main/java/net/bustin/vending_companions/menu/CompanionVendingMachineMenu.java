@@ -143,6 +143,9 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
 
             CompanionItem.getRelic(companionStack, slot).ifPresent(mods -> {
                 ItemStack relicStack = CompanionRelicItem.create(mods);
+                if (CompanionItem.isAncientRelicSlot(companionStack, slot)) {
+                    CompanionRelicItem.setAncient(relicStack, true);
+                }
 
                 relicContainer.setItem(slot, relicStack);
             });
@@ -244,13 +247,13 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     public ItemStack quickMoveStack(Player player, int index) {
         Slot slot = this.slots.get(index);
 
-        if (slot instanceof RelicSlot relicSlot) {
+        if (slot instanceof RelicSlot relicSlot && slot.hasItem()) {
             if (!relicSlot.isUnlocked()) return ItemStack.EMPTY;
             if (CompanionItem.getCompanionHearts(companionStack) <= 0) return ItemStack.EMPTY;
             if (!chargeRelicRemovalCost(player)) return ItemStack.EMPTY;
         }
 
-        if (slot instanceof AncientRelicSlot ancientRelicSlot) {
+        if (slot instanceof AncientRelicSlot ancientRelicSlot && slot.hasItem()) {
             if (!ancientRelicSlot.isUnlocked()) return ItemStack.EMPTY;
             if (CompanionItem.getCompanionHearts(companionStack) <= 0) return ItemStack.EMPTY;
             if (!chargeRelicRemovalCost(player)) return ItemStack.EMPTY;
@@ -275,7 +278,8 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
                 // from player → machine
                 if (stackInSlot.getItem() instanceof CompanionRelicItem) {
                     if (CompanionRelicItem.isAncient(stackInSlot)) {
-                        if (!this.moveItemStackTo(stackInSlot, ancientRelicSlotIndex, ancientRelicSlotIndex + 1, false)) {
+                        if (!this.moveItemStackTo(stackInSlot, 0, RELIC_SLOT_COUNT, false)
+                                && !this.moveItemStackTo(stackInSlot, ancientRelicSlotIndex, ancientRelicSlotIndex + 1, false)) {
                             return ItemStack.EMPTY;
                         }
                     } else if (!this.moveItemStackTo(stackInSlot, 0, RELIC_SLOT_COUNT, false)) {
@@ -432,7 +436,24 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
         }
     }
 
+    @Override
     public void clicked(int slotId, int dragType, ClickType clickType, Player player) {
+        if (clickType == ClickType.PICKUP && slotId >= 0 && slotId < this.slots.size()) {
+            Slot slot = this.slots.get(slotId);
+            ItemStack carried = this.getCarried();
+            if (slot instanceof RelicSlot relicSlot && carried.is(ModItems.COMPANION_CANDY)) {
+                if (relicSlot.canConvertToAncient() && !relicSlot.hasItem()) {
+                    CompanionItem.convertRelicSlotToAncient(this.companionStack, relicSlot.getRelicIndex());
+                    carried.shrink(1);
+                    this.setCarried(carried);
+                    relicSlot.setChanged();
+                    markBlockEntityChangedAndSync();
+                    this.broadcastChanges();
+                }
+                return;
+            }
+        }
+
         if (slotId >= 0 && slotId < this.slots.size()) {
             Slot slot = this.slots.get(slotId);
 
@@ -478,6 +499,12 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
     }
 
 
+    private void markBlockEntityChangedAndSync() {
+        blockEntity.setChanged();
+        if (!level.isClientSide) {
+            level.sendBlockUpdated(blockPos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
+        }
+    }
 
 
     // ---------- custom slot types (ported from VH, slightly loosened) ----------
@@ -495,11 +522,23 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
                     && this.relicIndex < CompanionItem.getRelicSlots(companionStack);
         }
 
+        public int getRelicIndex() {
+            return this.relicIndex;
+        }
+
+        public boolean isAncientSlot() {
+            return CompanionItem.isAncientRelicSlot(companionStack, this.relicIndex);
+        }
+
+        public boolean canConvertToAncient() {
+            return this.isUnlocked() && CompanionItem.canConvertRelicSlotToAncient(companionStack, this.relicIndex);
+        }
+
         @Override
         public boolean mayPlace(ItemStack stack) {
             return this.isUnlocked()
                     && stack.getItem() instanceof CompanionRelicItem
-                    && !CompanionRelicItem.isAncient(stack)
+                    && CompanionRelicItem.isAncient(stack) == this.isAncientSlot()
                     && !this.hasItem()
                     && CompanionItem.getCompanionHearts(companionStack) > 0;
         }
@@ -524,24 +563,16 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             if (stack.isEmpty()) {
                 CompanionItem.setRelic(companionStack, this.relicIndex, 0, Collections.emptyList());
             } else {
-                if (CompanionRelicItem.isAncient(stack)) {
-                    this.set(ItemStack.EMPTY);
-                    CompanionItem.setRelic(companionStack, this.relicIndex, 0, Collections.emptyList());
-                } else {
-                    List<ResourceLocation> mods = CompanionRelicItem.getModifiers(stack);
-                    CompanionItem.setRelic(
-                            companionStack,
-                            this.relicIndex,
-                            CompanionRelicItem.getModel(stack),
-                            mods
-                    );
-                }
+                List<ResourceLocation> mods = CompanionRelicItem.getModifiers(stack);
+                CompanionItem.setRelic(
+                        companionStack,
+                        this.relicIndex,
+                        CompanionRelicItem.getModel(stack),
+                        mods
+                );
             }
 
-            blockEntity.setChanged();
-            if (!level.isClientSide) {
-                level.sendBlockUpdated(blockPos, blockEntity.getBlockState(), blockEntity.getBlockState(), 3);
-            }
+            markBlockEntityChangedAndSync();
         }
 
         //tooltip for locked slots
@@ -560,7 +591,10 @@ public class CompanionVendingMachineMenu extends AbstractContainerMenu {
             return tooltip;
         }
         public @Nullable Pair<ResourceLocation, ResourceLocation> getNoItemIcon() {
-            return !this.isUnlocked() ? null : Pair.of(InventoryMenu.BLOCK_ATLAS, ModSlotIcons.COMPANION_RELIC_SLOTS);
+            if (!this.isUnlocked()) return null;
+            return Pair.of(InventoryMenu.BLOCK_ATLAS, this.isAncientSlot()
+                    ? ModSlotIcons.COMPANION_ANCIENT_RELIC_SLOT
+                    : ModSlotIcons.COMPANION_RELIC_SLOTS);
         }
     }
 
