@@ -82,9 +82,10 @@ public class CompanionVendingMachineBlock extends BaseEntityBlock {
         // -------------------------------------------------------
 
         ItemStack held = pPlayer.getItemInHand(pHand);
+        ItemStack mainHand = pPlayer.getItemInHand(InteractionHand.MAIN_HAND);
 
         // SHIFT + empty hand: pull all companions from Curios into the locker
-        if (pPlayer.isShiftKeyDown() && held.isEmpty() && pPlayer instanceof ServerPlayer sp) {
+        if (pPlayer.isShiftKeyDown() && mainHand.isEmpty() && pPlayer instanceof ServerPlayer sp) {
             int moved = locker.pullCompanionsFromCurios(sp);
             if (moved > 0) {
                 pPlayer.displayClientMessage(
