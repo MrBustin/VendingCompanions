@@ -8,6 +8,7 @@ import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.datafixers.util.Pair;
 import com.mojang.math.Quaternion;
 import com.mojang.math.Vector3f;
+import iskallia.vault.client.atlas.TextureAtlasRegion;
 import iskallia.vault.client.gui.framework.render.Tooltips;
 import iskallia.vault.client.gui.helper.UIHelper;
 import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
@@ -15,6 +16,7 @@ import iskallia.vault.core.vault.modifier.spi.VaultModifier;
 import iskallia.vault.entity.entity.PetEntity;
 import iskallia.vault.entity.entity.pet.PetHelper;
 import iskallia.vault.init.ModEntities;
+import iskallia.vault.init.ModTextureAtlases;
 import iskallia.vault.item.CompanionItem;
 import iskallia.vault.item.CompanionParticleTrailItem;
 import iskallia.vault.item.CompanionPetManager;
@@ -242,17 +244,18 @@ final class CompanionLockerDetailsRenderer {
         }
 
         VaultModifier<?> modifier = modifierOpt.get();
-        ResourceLocation texture = CompanionLockerTextures.temporalModifier(temporalId.getPath());
+        Optional<TextureAtlasRegion> iconOpt = modifier.getIcon().map(icon -> TextureAtlasRegion.of(ModTextureAtlases.MODIFIERS, icon));
+        if (iconOpt.isEmpty()) {
+            return;
+        }
 
         int iconX = panelX + screen.temporalIconOffX();
         int iconY = panelY + screen.temporalIconOffY();
 
         poseStack.pushPose();
         poseStack.translate(0, 0, 200);
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, texture);
-        GuiComponent.blit(poseStack, iconX, iconY, 0, 0, 32, 32, 32, 32);
+        iconOpt.get().blit(poseStack, iconX, iconY, 200, 32, 32);
         poseStack.popPose();
 
         if (mouseX >= iconX && mouseX <= iconX + 32 && mouseY >= iconY && mouseY <= iconY + 32) {
@@ -374,9 +377,18 @@ final class CompanionLockerDetailsRenderer {
     }
 
     private void renderModifierIcon(PoseStack poseStack, int mouseX, int mouseY, Map<ResourceLocation, Integer> counts, ResourceLocation id, int iconSize, int x, int y) {
-        ResourceLocation texture = getRelicModifierIconTex(id);
-        RenderSystem.setShaderTexture(0, texture);
-        GuiComponent.blit(poseStack, x, y, 0, 0, iconSize, iconSize, iconSize, iconSize);
+        Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(id);
+        if (modifierOpt.isEmpty()) {
+            return;
+        }
+
+        VaultModifier<?> modifier = modifierOpt.get();
+        Optional<TextureAtlasRegion> iconOpt = modifier.getIcon().map(icon -> TextureAtlasRegion.of(ModTextureAtlases.MODIFIERS, icon));
+        if (iconOpt.isEmpty()) {
+            return;
+        }
+
+        iconOpt.get().blit(poseStack, x, y, 200, iconSize, iconSize);
 
         int count = counts.getOrDefault(id, 1);
         if (count > 1) {
@@ -394,13 +406,7 @@ final class CompanionLockerDetailsRenderer {
 
         if (mouseX >= x && mouseX <= x + iconSize && mouseY >= y && mouseY <= y + iconSize) {
             List<Component> tooltip = new ArrayList<>();
-            Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(id);
-            if (modifierOpt.isPresent()) {
-                VaultModifier<?> modifier = modifierOpt.get();
-                tooltip.add(new TextComponent(modifier.getDisplayName()).withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
-            } else {
-                tooltip.add(new TextComponent(id.getPath()));
-            }
+            tooltip.add(new TextComponent(modifier.getDisplayName()).withStyle(Style.EMPTY.withColor(modifier.getDisplayTextColor())));
 
             if (count > 1) {
                 tooltip.add(new TextComponent("Count: " + count).withStyle(ChatFormatting.GRAY));
@@ -611,9 +617,4 @@ final class CompanionLockerDetailsRenderer {
         Lighting.setupFor3DItems();
     }
 
-    private ResourceLocation getRelicModifierIconTex(ResourceLocation id) {
-        String path = id.getPath();
-
-        return CompanionLockerTextures.modifier(path);
-    }
 }

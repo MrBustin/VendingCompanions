@@ -4,9 +4,11 @@ package net.bustin.vending_companions.screen.buttons;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.datafixers.util.Pair;
+import iskallia.vault.client.atlas.TextureAtlasRegion;
 import iskallia.vault.client.gui.helper.UIHelper;
 import iskallia.vault.core.vault.modifier.registry.VaultModifierRegistry;
 import iskallia.vault.core.vault.modifier.spi.VaultModifier;
+import iskallia.vault.init.ModTextureAtlases;
 import iskallia.vault.item.CompanionItem;
 import net.bustin.vending_companions.menu.CompanionVendingMachineMenu;
 import net.bustin.vending_companions.screen.CompanionLockerScreen;
@@ -342,10 +344,10 @@ public class CompanionDisplayButton extends AbstractButton {
         Optional<VaultModifier<?>> modifierOpt = VaultModifierRegistry.getOpt(temporalId);
         if (modifierOpt.isEmpty()) return;
 
-        VaultModifier<?> modifier = modifierOpt.get(); // (unused right now, but fine)
-
-        // 3) Texture path
-        ResourceLocation tex = CompanionLockerTextures.temporalModifier(temporalId.getPath());
+        Optional<TextureAtlasRegion> iconOpt = modifierOpt.get().getIcon().map(icon -> TextureAtlasRegion.of(ModTextureAtlases.MODIFIERS, icon));
+        if (iconOpt.isEmpty()) {
+            return;
+        }
 
         int iconX = panelX + temporalIconOffX;
         int iconY = panelY + temporalIconOffY;
@@ -358,18 +360,8 @@ public class CompanionDisplayButton extends AbstractButton {
         poseStack.translate(iconX, iconY, 200);
         poseStack.scale(scale, scale, 1.0f);
 
-        RenderSystem.setShader(GameRenderer::getPositionTexShader);
         RenderSystem.setShaderColor(1.0F, 1.0F, 1.0F, 1.0F);
-        RenderSystem.setShaderTexture(0, tex);
-
-        // draw at (0,0) because we translated already
-        GuiComponent.blit(
-                poseStack,
-                0, 0,
-                0, 0,
-                size, size,
-                size, size
-        );
+        iconOpt.get().blit(poseStack, 0, 0, 200, size, size);
 
         poseStack.popPose();
     }
@@ -469,16 +461,14 @@ public class CompanionDisplayButton extends AbstractButton {
 
             for (ResourceLocation id : rows.get(rowIndex)) {
                 int count = counts.getOrDefault(id, 1);
-                ResourceLocation tex = getRelicModifierIconTex(id); // your mapping hook
+                Optional<TextureAtlasRegion> iconOpt = getRelicModifierIcon(id);
+                if (iconOpt.isEmpty()) {
+                    continue;
+                }
 
                 // icon
                 poseStack.pushPose();
-                poseStack.translate(x, y, 200);
-                poseStack.scale(scale, scale, 1.0f);
-
-                RenderSystem.setShaderTexture(0, tex);
-                GuiComponent.blit(poseStack, 0, 0, 0, 0, srcSize, srcSize, srcSize, srcSize);
-
+                iconOpt.get().blit(poseStack, x, y, 200, iconW, iconH);
                 poseStack.popPose();
 
                 // xN overlay (half size, bottom-right, transparent bg)
@@ -502,10 +492,10 @@ public class CompanionDisplayButton extends AbstractButton {
 
         RenderSystem.disableBlend();
     }
-    private ResourceLocation getRelicModifierIconTex(ResourceLocation id) {
-        String path = id.getPath();
-
-        return CompanionLockerTextures.modifier(path);
+    private Optional<TextureAtlasRegion> getRelicModifierIcon(ResourceLocation id) {
+        return VaultModifierRegistry.getOpt(id)
+                .flatMap(VaultModifier::getIcon)
+                .map(icon -> TextureAtlasRegion.of(ModTextureAtlases.MODIFIERS, icon));
     }
 
     private boolean isSelected() {
